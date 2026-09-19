@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Warsztat Współpracy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#ffffff; --surface-2:#efece5; --border:#e2ddd2;
+  --text:#211f1a; --text-muted:#6c6a62; --text-soft:#8b887e;
+  --accent:#33449e; --accent-strong:#232f70; --accent-soft:#e6e9f8;
+  --dept-sales:#a5590a; --dept-sales-soft:#faead4;
+  --dept-rnd:#0e7a8a; --dept-rnd-soft:#dbf1f3;
+  --dept-pm:#6a3ba0; --dept-pm-soft:#efe3fa;
+  --pri-high:#b7362a; --pri-high-soft:#fae1de;
+  --pri-med:#a3730f; --pri-med-soft:#f8ecd0;
+  --pri-low:#2c7a4c; --pri-low-soft:#dff2e5;
+  --radius:14px; --radius-sm:9px;
+  --shadow:0 1px 2px rgba(30,26,16,.05), 0 10px 28px -14px rgba(30,26,16,.22);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15161a; --surface:#1d1f24; --surface-2:#24262c; --border:#31333a;
+    --text:#eceef1; --text-muted:#a2a6ae; --text-soft:#787c85;
+    --accent:#7c8ef0; --accent-strong:#a4b1f7; --accent-soft:#262c48;
+    --dept-sales:#e0a24f; --dept-sales-soft:#3a2c17;
+    --dept-rnd:#4fc3d4; --dept-rnd-soft:#123138;
+    --dept-pm:#b48af0; --dept-pm-soft:#2c2140;
+    --pri-high:#f0857a; --pri-high-soft:#3a1e1c;
+    --pri-med:#e3b45c; --pri-med-soft:#382c15;
+    --pri-low:#7cd9a0; --pri-low-soft:#153826;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{background:var(--bg); color:var(--text); font-family:'Inter',system-ui,-apple-system,sans-serif; padding-inline:16px; padding-block:16px;}
+h1,h2,h3,.disp{font-family:'Sora',system-ui,sans-serif;}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+a{color:var(--accent);}
+button{font-family:inherit; cursor:pointer;}
+textarea,select,input{font-family:inherit; font-size:15px;}
+.btn{border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:var(--radius-sm); padding:10px 16px; font-size:14px; font-weight:600; transition:transform .08s ease, border-color .15s ease;}
+.btn:hover{border-color:var(--accent);}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+.btn-primary:hover{background:var(--accent-strong); border-color:var(--accent-strong);}
+.btn-ghost{background:transparent; border-color:transparent; color:var(--text-muted);}
+.btn-ghost:hover{color:var(--text); border-color:var(--border);}
+.btn:disabled{opacity:.5; cursor:not-allowed; transform:none;}
+.btn-sm{padding:6px 10px; font-size:12.5px;}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);}
+.pill{display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+.wrap{max-width:1180px; margin-inline:auto;}
+.row{display:flex; gap:10px; flex-wrap:wrap;}
+.col{display:flex; flex-direction:column; gap:10px;}
+.muted{color:var(--text-muted);}
+.soft{color:var(--text-soft);}
+label.field-label{font-weight:600; font-size:14.5px; display:block; margin-bottom:6px;}
+textarea.field{width:100%; min-height:78px; resize:vertical; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text);}
+textarea.field:focus, select.field:focus, input.field:focus{outline:2px solid var(--accent); outline-offset:1px;}
+select.field, input.field{width:100%; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text);}
+.hr{height:1px; background:var(--border); border:none; margin:14px 0;}
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px;}
+[hidden]{display:none!important;}
+.dept-chip{padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700;}
+.dept-sales{background:var(--dept-sales-soft); color:var(--dept-sales);}
+.dept-rnd{background:var(--dept-rnd-soft); color:var(--dept-rnd);}
+.dept-pm{background:var(--dept-pm-soft); color:var(--dept-pm);}
+.pri-high{background:var(--pri-high-soft); color:var(--pri-high);}
+.pri-medium{background:var(--pri-med-soft); color:var(--pri-med);}
+.pri-low{background:var(--pri-low-soft); color:var(--pri-low);}
+.theme-card{border-left:4px solid; border-radius:var(--radius-sm); padding:12px 14px; background:var(--surface-2);}
+.resp-item{padding:8px 10px; border-radius:var(--radius-sm); background:var(--surface-2); font-size:13.5px; line-height:1.4;}
+.scroll-list{max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px;}
+.timer-box{font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; letter-spacing:.02em; font-variant-numeric:tabular-nums;}
+.module-chip{border:1px solid var(--border); background:var(--surface); border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; white-space:nowrap; color:var(--text-muted);}
+.module-chip.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+.grid-host{display:grid; grid-template-columns:340px 1fr; gap:16px;}
+@media (max-width:860px){ .grid-host{grid-template-columns:1fr;} }
+.step-item{display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px dashed var(--border);}
+.step-item:last-child{border-bottom:none;}
+.step-num{flex:none; width:22px; height:22px; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center;}
+.bar-track{background:var(--surface-2); border-radius:6px; height:22px; overflow:hidden; flex:1;}
+.bar-fill{height:100%; background:var(--accent); border-radius:6px 0 0 6px; display:flex; align-items:center; justify-content:flex-end; padding-right:8px;}
+.toast{position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); background:var(--accent-strong); color:#fff; padding:10px 18px; border-radius:999px; font-size:13.5px; font-weight:600; box-shadow:var(--shadow); z-index:50; opacity:0; transition:opacity .25s ease; pointer-events:none;}
+.toast.show{opacity:1;}
+.top-note{background:var(--accent-soft); color:var(--accent-strong); border-radius:var(--radius-sm); padding:10px 12px; font-size:13px;}
+.lang-switch{display:flex; border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+.lang-switch button{border:none; background:transparent; padding:5px 12px; font-size:12.5px; font-weight:700; color:var(--text-muted);}
+.lang-switch button.active{background:var(--accent); color:#fff;}
+.join-card{max-width:440px; margin:8vh auto 0; padding:28px 26px;}
+.dept-pick{display:flex; flex-direction:column; gap:8px;}
+.dept-opt{border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:11px 14px; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:14.5px;}
+.dept-opt.selected{border-color:var(--accent); background:var(--accent-soft); color:var(--accent-strong);}
+.ai-bridge{border:1.5px dashed var(--border); border-radius:var(--radius-sm); padding:12px; margin-top:8px; background:var(--surface-2);}
+.ai-bridge textarea{width:100%; min-height:90px; font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text);}
+.step-badge{display:inline-flex; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:11px; font-weight:800; align-items:center; justify-content:center; margin-right:6px;}
+</style>
+</head>
+<body>
+<div id="app" class="wrap"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* =====================================================================
+   KONFIGURACJA — uzupełnij przed wdrożeniem (Supabase Project Settings -> API)
+   ===================================================================== */
+const SUPABASE_URL = "https://zylxxtekqhulgbtmjnje.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_4GPAoe8lRdk3FQf373IIag_L5ODTTQy";
+const HOST_PIN = "1234"; // PIN dostępu do panelu moderatora (?mode=host) — zmień na własny
+/* ===================================================================== */
+
+const sb = (window.supabase && SUPABASE_URL.startsWith('http'))
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+/* ===================== i18n ===================== */
+const UI = {
+  title:{pl:'Warsztat Współpracy',en:'Collaboration Workshop'},
+  subtitle:{pl:'Sprzedaż • R&D • Zarządzanie Projektami',en:'Sales • R&D • Project Management'},
+  join_lang:{pl:'Wybierz język',en:'Choose language'},
+  join_name:{pl:'Imię (opcjonalnie)',en:'Name (optional)'},
+  join_dept:{pl:'Twój dział',en:'Your department'},
+  join_button:{pl:'Dołącz do warsztatu',en:'Join the workshop'},
+  dept_sales:{pl:'Sprzedaż',en:'Sales'},
+  dept_rnd:{pl:'R&D',en:'R&D'},
+  dept_pm:{pl:'Zarządzanie Projektami',en:'Project Management'},
+  change_join:{pl:'Zmień dział / język',en:'Change department / language'},
+  submit:{pl:'Wyślij odpowiedź',en:'Submit answer'},
+  thanks:{pl:'Dziękujemy! Twoja odpowiedź została zapisana.',en:'Thanks! Your answer has been recorded.'},
+  break_title:{pl:'☕ Przerwa',en:'☕ Break'},
+  break_sub:{pl:'Wróć na swoje miejsce za kilka minut.',en:'Please be back in your seat shortly.'},
+  online_now:{pl:'online',en:'online'},
+  host_title:{pl:'Panel moderatora',en:'Moderator panel'},
+  host_pin_title:{pl:'Panel moderatora — dostęp',en:'Moderator panel — access'},
+  host_pin_hint:{pl:'Wpisz PIN moderatora',en:'Enter the moderator PIN'},
+  host_pin_wrong:{pl:'Nieprawidłowy PIN',en:'Incorrect PIN'},
+  enter:{pl:'Wejdź',en:'Enter'},
+  reset_btn:{pl:'Nowa sesja (reset)',en:'New session (reset)'},
+  reset_confirm:{pl:'To usunie wszystkie odpowiedzi, głosy i analizy z tej sesji. Kontynuować?',en:'This will delete all responses, votes and analysis from this session. Continue?'},
+  sufler:{pl:'Sufler moderatora',en:"Moderator's script"},
+  duration:{pl:'Czas',en:'Duration'},
+  min:{pl:'min',en:'min'},
+  results_live:{pl:'Wyniki na żywo',en:'Live results'},
+  responses_n:{pl:'odpowiedzi',en:'responses'},
+  no_responses:{pl:'Brak odpowiedzi — jeszcze nic nie wysłano.',en:'No responses yet.'},
+  analyze_btn:{pl:'✨ Analizuj i pogrupuj (AI)',en:'✨ Analyze & group (AI)'},
+  hide_bridge:{pl:'Zwiń',en:'Collapse'},
+  bridge_step1:{pl:'Skopiuj poniższy tekst i wklej go w rozmowie z Claude (np. w oknie czatu, w którym budowaliśmy to narzędzie).',en:'Copy the text below and paste it into a conversation with Claude.'},
+  bridge_copy:{pl:'Kopiuj prompt',en:'Copy prompt'},
+  bridge_copied:{pl:'Skopiowano!',en:'Copied!'},
+  bridge_step2:{pl:'Wklej tutaj odpowiedź Claude (sam JSON):',en:"Paste Claude's reply here (JSON only):"},
+  bridge_save:{pl:'Zapisz wynik',en:'Save result'},
+  bridge_error:{pl:'Nie udało się odczytać JSON — sprawdź, czy wklejono tylko odpowiedź modelu.',en:"Couldn't parse JSON — make sure you pasted only the model's reply."},
+  no_responses_ai:{pl:'Brak odpowiedzi do analizy.',en:'No responses to analyze yet.'},
+  db_unavailable:{pl:'Uzupełnij SUPABASE_URL i SUPABASE_ANON_KEY na początku pliku index.html, aby uruchomić narzędzie.',en:'Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of index.html to run this tool.'},
+  priority_high:{pl:'Wysoki priorytet',en:'High priority'},
+  priority_medium:{pl:'Średni priorytet',en:'Medium priority'},
+  priority_low:{pl:'Niski priorytet',en:'Low priority'},
+  suggested_prompts:{pl:'Podpowiedzi dla działów',en:'Suggested prompts by department'},
+  generate_vote_list:{pl:'Wygeneruj listę do głosowania (AI)',en:'Generate voting list (AI)'},
+  vote_title:{pl:'Zagłosuj na 3 najważniejsze pomysły',en:'Vote for the top 3 ideas'},
+  vote_hint:{pl:'Zaznacz maksymalnie 3 opcje.',en:'Select up to 3 options.'},
+  vote_submit:{pl:'Zatwierdź głos',en:'Submit vote'},
+  vote_thanks:{pl:'Twój głos został zapisany.',en:'Your vote has been recorded.'},
+  vote_results:{pl:'Wyniki głosowania na żywo',en:'Live voting results'},
+  no_vote_yet:{pl:'Lista do głosowania nie została jeszcze wygenerowana.',en:'The voting list has not been generated yet.'},
+  select_charter:{pl:'Zaznacz 5–7 zasad do finalnej karty współpracy',en:'Select 5–7 principles for the final charter'},
+  approve_charter:{pl:'Zatwierdź kartę współpracy',en:'Approve the collaboration charter'},
+  charter_approved:{pl:'Karta współpracy zatwierdzona.',en:'Collaboration charter approved.'},
+  candidate_themes_empty:{pl:'Najpierw uruchom analizę AI powyżej dla pola „Zaproponuj zasadę”.',en:'Run the AI analysis above for the "Propose a principle" field first.'},
+  summary_title:{pl:'Podsumowanie końcowe warsztatu',en:'Final workshop summary'},
+  summary_checklist:{pl:'✅ Checklista przekazania projektu',en:'✅ Project handover checklist'},
+  summary_ideas:{pl:'🏆 Trzy najważniejsze pomysły (głosowanie)',en:'🏆 Top three ideas (voted)'},
+  summary_charter:{pl:'📜 Karta Współpracy',en:'📜 Collaboration Charter'},
+  summary_commit:{pl:'🤝 Zobowiązania uczestników',en:'🤝 Participant commitments'},
+  summary_empty:{pl:'Brak jeszcze danych na tym etapie.',en:'No data yet for this stage.'},
+  start_timer:{pl:'Start',en:'Start'},
+  pause_timer:{pl:'Pauza',en:'Pause'},
+  reset_timer:{pl:'Reset',en:'Reset'},
+  time_up:{pl:'CZAS MINĄŁ',en:"TIME'S UP"},
+  module_break:{pl:'Przerwa',en:'Break'},
+  module_summary:{pl:'Podsumowanie',en:'Summary'},
+  optional_bank_note:{pl:'Opcjonalny bank pytań — użyj, jeśli etap kończy się wcześniej lub dyskusja wymaga pogłębienia.',en:'Optional backup question bank — use if a module finishes early or discussion needs deepening.'},
+  parallel_note:{pl:'Wszystkie trzy działy pracują równolegle w osobnych grupach, a następnie krótko dzielą się wnioskami na forum (~5 min).',en:'All three departments work simultaneously in separate groups, then briefly share back with the whole room (~5 min).'},
+  jump_hint:{pl:'Kliknij etap, aby go aktywować dla uczestników',en:'Click a stage to activate it for participants'},
+};
+function t(key,lang){ return (UI[key] && UI[key][lang]) || (UI[key] && UI[key].en) || key; }
+
+/* ===================== Module registry ===================== */
+const MODULES = [
+  { id:'welcome', num:1, duration:15, needsDept:false,
+    title:{pl:'1. Powitanie i Icebreaker',en:'1. Welcome & Icebreaker'},
+    subtitle:{pl:'„Jeden klient – trzy perspektywy”',en:'"One Customer – Three Perspectives"'},
+    script:{
+      pl:['Przywitaj uczestników i przedstaw temat: „Jeden zespół. Jeden klient. Jeden cel.”','Zadaj pytanie na głos: „Klient właśnie podpisał kontrakt. Co musi się wydarzyć w ciągu najbliższych 6 miesięcy, aby uznał ten projekt za sukces?”','Każdy dział odpowiada osobno (ustnie lub w narzędziu).','Cel: zjednoczyć wszystkich wokół klienta, ujawnić różne definicje sukcesu, nadać ton współpracy.'],
+      en:['Welcome participants and introduce the theme: "One Team. One Customer. One Goal."','Ask aloud: "A customer has just signed a contract. What needs to happen over the next six months for them to describe this project as a great success?"','Each department answers separately (aloud or in the tool).','Purpose: align everyone around the customer, reveal different definitions of success, set a collaborative tone.']
+    },
+    fields:[ {id:'success', label:{pl:'Co musi się wydarzyć w ciągu 6 miesięcy, aby klient uznał projekt za sukces?',en:'What needs to happen over the next six months for the customer to call this a great success?'}} ]
+  },
+  { id:'day_in_life', num:2, duration:30, needsDept:true,
+    title:{pl:'2. Zrozumieć Innych',en:'2. Understanding Each Other'},
+    subtitle:{pl:'„Dzień z mojego życia”',en:'"A Day in My Life"'},
+    script:{
+      pl:['Każdy dział ma 5–7 minut, by odpowiedzieć na 3 pytania (poniżej).','Działy pracują równolegle w osobnych grupach, potem krótkie zestawienie na forum (~5 min).','Wykorzystaj podpowiedzi działowe, jeśli grupa potrzebuje inspiracji.'],
+      en:['Each department has 5–7 minutes to answer the 3 questions below.','Departments work in parallel groups, then a brief share-back (~5 min).','Use the department-specific prompts if a group needs inspiration.']
+    },
+    parallelNote:true,
+    fields:[
+      {id:'helps', label:{pl:'Co pomaga nam odnosić sukcesy?',en:'What helps us succeed?'}},
+      {id:'difficult', label:{pl:'Co utrudnia naszą pracę?',en:'What makes our work difficult?'}},
+      {id:'misunderstood', label:{pl:'Czego inne działy najczęściej nie rozumieją w naszej pracy?',en:'What do other departments often misunderstand about us?'}}
+    ],
+    prompts:{
+      sales:{pl:['Jakie informacje najtrudniej uzyskać od klienta?','Jakie wyzwania pojawiają się przed startem projektu?','Co ułatwiłoby przekazanie projektu dalej?'], en:['What information is hardest to obtain from customers?','What challenges do you face before a project starts?','What would make project handovers smoother?']},
+      rnd:{pl:['Jakich informacji zwykle brakuje na starcie developmentu?','Które obietnice sprzedaży tworzą największe wyzwania techniczne?','Co dałoby się wyjaśnić wcześniej?'], en:['What information is usually missing when development begins?','Which sales commitments create the greatest technical challenges?','What could be clarified earlier?']},
+      pm:{pl:['Gdzie najczęściej gubią się informacje?','Co powoduje opóźnienia lub zbędną pracę?','Co uczyniłoby realizację projektu bardziej przewidywalną?'], en:['Where is information most often lost?','What causes delays or unnecessary rework?','What would make project execution more predictable?']}
+    }
+  },
+  { id:'frustration_wall', num:3, duration:30, needsDept:false,
+    title:{pl:'3. Ściana Frustracji',en:'3. The Frustration Wall'},
+    subtitle:{pl:'„Porozmawiajmy o tym”',en:'"Let\'s Talk About It"'},
+    script:{
+      pl:['Każdy uczestnik anonimowo zapisuje odpowiedź (można wysłać kilka).','Po zebraniu — użyj AI, aby pogrupować odpowiedzi w tematy (Komunikacja, Planowanie, Zakres, Oczekiwania klienta, Priorytety, Decyzje, Odpowiedzialność).','Zapytaj: które frustracje są procesowe? Które komunikacyjne? Które można szybko rozwiązać?'],
+      en:['Each participant anonymously writes an answer (multiple submissions welcome).','Once collected, use AI to group responses into themes (Communication, Planning, Scope, Customer expectations, Priorities, Decisions, Accountability).','Ask: which frustrations are process-related? Which are communication-related? Which could be solved quickly?']
+    },
+    fields:[ {id:'frustration', label:{pl:'Co najbardziej Cię frustruje we współpracy z innymi działami?',en:'What frustrates you most when working with the other departments?'}} ]
+  },
+  { id:'journey_sim', num:4, duration:45, needsDept:false,
+    title:{pl:'4. Symulacja Ścieżki Klienta',en:'4. Customer Journey Simulation'},
+    subtitle:{pl:'„Od szansy sprzedaży do dostawy”',en:'"From Opportunity to Delivery"'},
+    script:{
+      pl:['Przedstaw fikcyjny scenariusz: strategiczny klient chce krótkiego terminu, niestandardowej funkcjonalności, ma ograniczony budżet, wysokie oczekiwania i kilka zmian zakresu.','Każdy dział dyskutuje: jakich informacji potrzebujemy? Jakie widzimy ryzyka? Jakie decyzje trzeba podjąć przed kolejnym etapem? Czego potrzebujemy od poprzedniego działu?','Razem zaprojektujcie idealny proces przekazania: Sprzedaż → PM → R&D.','Deliverable: checklista informacji, które muszą towarzyszyć każdemu nowemu projektowi — zbierz je w polu poniżej.'],
+      en:['Present a fictional scenario: a strategic customer wants a tight deadline, custom functionality, has a limited budget, high expectations and several change requests.','Each department discusses: what information do we need? What risks do we see? What decisions should be made before the next stage? What do we need from the previous department?','Together design the ideal handover process: Sales → PM → R&D.','Deliverable: a checklist of information that must accompany every new project — collect items below.']
+    },
+    fields:[
+      {id:'info_needed', label:{pl:'Jakich informacji potrzebujemy?',en:'What information do we need?'}},
+      {id:'risks', label:{pl:'Jakie widzimy ryzyka?',en:'What risks do we see?'}},
+      {id:'decisions', label:{pl:'Jakie decyzje trzeba podjąć przed kolejnym etapem?',en:'What decisions should be made before moving to the next stage?'}},
+      {id:'checklist_item', label:{pl:'Pozycja checklisty: co zawsze musi towarzyszyć nowemu projektowi?',en:'Checklist item: what must always accompany every new project?'}}
+    ]
+  },
+  { id:'break', num:null, duration:15, type:'info',
+    title:{pl:'Przerwa',en:'Break'}, subtitle:{pl:'',en:''},
+    script:{ pl:['Zaplanowana po najdłuższym i najbardziej intensywnym module.','15 minut — kawa, telefon, rozciągnięcie się.'], en:['Placed after the longest, most intensive module.','15 minutes — coffee, phones, stretch.'] },
+    fields:[]
+  },
+  { id:'ceo_discussion', num:5, duration:20, needsDept:false,
+    title:{pl:'5. Dyskusja Otwarta',en:'5. Open Discussion'},
+    subtitle:{pl:'„Gdybyś był CEO…”',en:'"If You Were the CEO..."'},
+    script:{
+      pl:['Każdy odpowiada: „Gdybyś mógł zmienić JEDNĄ rzecz jutro, aby poprawić współpracę między działami, co by to było?”','Zasady: max 2 minuty na osobę, żadnej krytyki bez propozycji rozwiązania, skup się na poprawie, nie na winie.','Gdy zbierzesz odpowiedzi, użyj AI by wygenerować listę unikalnych pomysłów do głosowania.','Uczestnicy głosują na 3 pomysły o największym wpływie.'],
+      en:['Each participant answers: "If you could change only ONE thing tomorrow to improve collaboration, what would it be?"','Rules: max two minutes per person, no criticism without a proposed solution, focus on improvement not blame.','Once collected, use AI to generate a deduplicated list of ideas to vote on.','Participants vote on the three ideas with the greatest impact.']
+    },
+    fields:[ {id:'one_change', label:{pl:'Gdybyś mógł zmienić jedną rzecz jutro — co by to było?',en:'If you could change only ONE thing tomorrow, what would it be?'}} ]
+  },
+  { id:'charter', num:6, duration:30, needsDept:false,
+    title:{pl:'6. Tworzenie Karty Współpracy',en:'6. Creating Our Collaboration Charter'},
+    subtitle:{pl:'',en:''},
+    script:{
+      pl:['Wspólnie zdefiniujcie zasady działania zespołu w 4 obszarach: Komunikacja, Przekazanie projektu, Zmiany zakresu, Podejmowanie decyzji.','Poproś uczestników o propozycje konkretnych zasad (pole poniżej).','Użyj AI, aby pogrupować propozycje w kandydujące tematy, a następnie wybierz 5–7 finalnych zasad.','Deliverable: „5–7 zasad efektywnej współpracy międzydziałowej”.'],
+      en:['Together define the team\'s operating principles across 4 areas: Communication, Project Handover, Scope Changes, Decision Making.','Ask participants to propose concrete principles (field below).','Use AI to group proposals into candidate themes, then pick the final 5–7 principles.','Deliverable: "5–7 Principles for Effective Cross-Functional Collaboration".']
+    },
+    fields:[ {id:'principle', label:{pl:'Zaproponuj jedną zasadę współpracy (Komunikacja / Przekazanie / Zmiany zakresu / Decyzje)',en:'Propose one operating principle (Communication / Handover / Scope Changes / Decision Making)'}} ]
+  },
+  { id:'closing', num:7, duration:10, needsDept:false,
+    title:{pl:'Ćwiczenie Zamykające',en:'Closing Exercise'},
+    subtitle:{pl:'„Zaczynając jutro…”',en:'"Starting Tomorrow..."'},
+    script:{
+      pl:['Każdy uczestnik kończy dwa zdania (poniżej).','Zbierz zobowiązania — będą widoczne w podsumowaniu końcowym.'],
+      en:['Each participant completes two sentences (below).','Collect commitments — they will appear in the final summary.']
+    },
+    fields:[
+      {id:'start_tomorrow', label:{pl:'Zaczynając jutro, będę…',en:'Starting tomorrow, I will...'}},
+      {id:'need_from_others', label:{pl:'Aby być skuteczniejszym, potrzebuję od innych działów…',en:'To be more successful, I need other departments to...'}}
+    ]
+  },
+  { id:'summary', num:null, type:'summary',
+    title:{pl:'Podsumowanie',en:'Summary'}, subtitle:{pl:'',en:''},
+    script:{ pl:['Skompiluj finalne rezultaty na wspólnym ekranie.','Ustal właścicieli i terminy dla uzgodnionych działań (ustnie / na flipcharcie).'], en:['Compile the final results on the shared screen.','Assign owners and timelines for agreed actions (verbally / on a flipchart).'] },
+    fields:[]
+  }
+];
+const BANK = {
+  groups:[
+    {label:{pl:'Skupienie na kliencie (pasuje do modułu 4)',en:'Customer Focus (fits Module 4)'}, q:{pl:['W którym momencie tworzymy dla klienta najwięcej wartości?','Gdzie nieświadomie tworzymy frustrację?','Czego klient oczekuje, a my to pomijamy?'],en:['At what point do we create the most value for our customers?','Where do we unintentionally create frustration?','What does the customer expect that we often overlook?']}},
+    {label:{pl:'Współpraca (pasuje do modułu 3)',en:'Collaboration (fits Module 3)'}, q:{pl:['Co dublujemy, bo nie ufamy procesowi?','Gdzie najczęściej dochodzi do nieporozumień?','Które spotkania dodają wartości, a które nie?'],en:['What do we duplicate because we don\'t fully trust the process?','Where do misunderstandings occur most frequently?','Which meetings add value — and which don\'t?']}},
+    {label:{pl:'Komunikacja (pasuje do modułu 3)',en:'Communication (fits Module 3)'}, q:{pl:['Jakie informacje docierają za późno?','Jakich informacji najczęściej brakuje?','Co powinno stać się standardem przy każdym przekazaniu projektu?'],en:['What information arrives too late?','What information is missing most often?','What should become standard in every project handover?']}},
+    {label:{pl:'Odpowiedzialność (pasuje do modułu 5 lub 6)',en:'Accountability (fits Module 5 or 6)'}, q:{pl:['Gdzie odpowiedzialności są niejasne?','Które sprawy „gubią się” między działami?','Jak poprawić poczucie odpowiedzialności?'],en:['Where are responsibilities unclear?','Which issues tend to "fall between departments"?','How can we improve ownership?']}},
+    {label:{pl:'Ciągłe doskonalenie (pasuje do modułu 5 lub 6)',en:'Continuous Improvement (fits Module 5 or 6)'}, q:{pl:['Jaką szybką poprawę możemy wdrożyć w przyszłym tygodniu?','Jaka długoterminowa poprawa powinna stać się standardem?'],en:['What is one quick improvement we can implement next week?','What long-term improvement should become part of our standard process?']}}
+  ]
+};
+const DEPTS = ['sales','rnd','pm'];
+
+/* ===================== State & helpers ===================== */
+const qs = new URLSearchParams(location.search);
+const MODE = qs.get('mode')==='host' ? 'host':'participant';
+let lang = localStorage.getItem('wtool_lang') || 'pl';
+let dept = localStorage.getItem('wtool_dept') || '';
+let pname = localStorage.getItem('wtool_name') || '';
+let clientId = localStorage.getItem('wtool_client_id');
+if(!clientId){ clientId = 'c'+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('wtool_client_id', clientId); }
+
+let currentSession = { active_module:'welcome', vote_options:[], vote_module_id:null, charter:[] };
+let peerCount = 1;
+const app = document.getElementById('app');
+
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+function moduleById(id){ return MODULES.find(m=>m.id===id); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setLang(l){ lang=l; localStorage.setItem('wtool_lang', l); render(); }
+
+/* ===================== sb helpers ===================== */
+function subscribeFiltered(table, col, val, cb){
+  async function refetch(){
+    let q = sb.from(table).select('*');
+    if(col) q = q.eq(col, val);
+    const { data, error } = await q;
+    if(!error) cb(data||[]);
+  }
+  refetch();
+  const channel = sb.channel(table+'_'+(val||'all')+'_'+Math.random().toString(36).slice(2))
+    .on('postgres_changes', { event:'*', schema:'public', table }, ()=> refetch())
+    .subscribe();
+  return ()=> sb.removeChannel(channel);
+}
+function subscribeSessionState(cb){
+  async function refetch(){
+    const { data, error } = await sb.from('session_state').select('*').eq('id',1).single();
+    if(!error && data) cb(data);
+  }
+  refetch();
+  const channel = sb.channel('session_state_ch_'+Math.random().toString(36).slice(2))
+    .on('postgres_changes', { event:'*', schema:'public', table:'session_state' }, ()=> refetch())
+    .subscribe();
+  return ()=> sb.removeChannel(channel);
+}
+function subscribeAnalysis(key, cb){
+  async function refetch(){
+    const { data } = await sb.from('analysis').select('*').eq('key',key).maybeSingle();
+    cb(data||null);
+  }
+  refetch();
+  const channel = sb.channel('analysis_'+key.replace(/[^a-z0-9]/gi,'_')+'_'+Math.random().toString(36).slice(2))
+    .on('postgres_changes', { event:'*', schema:'public', table:'analysis', filter:`key=eq.${key}` }, ()=> refetch())
+    .subscribe();
+  return ()=> sb.removeChannel(channel);
+}
+
+/* ===================== Boot ===================== */
+function boot(){
+  if(!sb){ render(); return; }
+
+  const presenceChannel = sb.channel('presence-room', { config:{ presence:{ key: clientId } } });
+  presenceChannel.on('presence', {event:'sync'}, ()=>{
+    const state = presenceChannel.presenceState();
+    peerCount = Math.max(1, Object.keys(state).length);
+    renderHostHeaderCount();
+  });
+  presenceChannel.subscribe(async (status)=>{
+    if(status==='SUBSCRIBED'){ try{ await presenceChannel.track({ role: MODE, at: Date.now() }); }catch(e){} }
+  });
+
+  subscribeSessionState(data=>{ currentSession = data; render(); });
+  render();
+}
+
+/* ===================== Generic render dispatch ===================== */
+function render(){
+  if(MODE==='host') renderHost(); else renderParticipant();
+}
+
+/* ===================== Host PIN gate ===================== */
+function hostUnlocked(){ return sessionStorage.getItem('wtool_host_ok')==='1'; }
+function renderHostGate(){
+  app.innerHTML='';
+  const card = document.createElement('div');
+  card.className='card join-card';
+  card.innerHTML = `
+    <div class="disp" style="font-size:19px;font-weight:800;text-align:center;">${t('host_pin_title',lang)}</div>
+    <div class="muted" style="text-align:center;font-size:13px;margin:8px 0 16px;">${t('host_pin_hint',lang)}</div>
+    <input class="field" id="pinInput" type="password" inputmode="numeric" style="text-align:center;letter-spacing:.3em;font-size:20px;" />
+    <div id="pinErr" class="muted" style="color:var(--pri-high);font-size:12.5px;margin-top:8px;text-align:center;" hidden>${t('host_pin_wrong',lang)}</div>
+    <button class="btn btn-primary" id="pinBtn" style="width:100%;margin-top:14px;">${t('enter',lang)}</button>
+  `;
+  app.appendChild(card);
+  const go = ()=>{
+    const v = card.querySelector('#pinInput').value;
+    if(v===HOST_PIN){ sessionStorage.setItem('wtool_host_ok','1'); render(); }
+    else card.querySelector('#pinErr').hidden=false;
+  };
+  card.querySelector('#pinBtn').onclick = go;
+  card.querySelector('#pinInput').addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+}
+
+/* ===================== Participant view ===================== */
+function renderParticipant(){
+  app.innerHTML='';
+  if(!sb){
+    app.innerHTML = `<div class="card" style="padding:20px;margin-top:40px;">${t('db_unavailable',lang)}</div>`;
+    return;
+  }
+  if(!dept && !localStorage.getItem('wtool_joined')){
+    renderJoin(); return;
+  }
+  const mod = moduleById(currentSession.active_module) || MODULES[0];
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div class="disp" style="font-weight:800;font-size:18px;">${t('title',lang)}</div>
+        <div class="soft" style="font-size:12.5px;">${escapeHtml(pname||'')} ${dept? '· <span class=\"dept-chip dept-'+dept+'\">'+t('dept_'+dept,lang)+'</span>':''}</div>
+      </div>
+      <div class="row" style="align-items:center;gap:8px;">
+        <div class="lang-switch"><button data-l="pl" class="${lang==='pl'?'active':''}">PL</button><button data-l="en" class="${lang==='en'?'active':''}">EN</button></div>
+      </div>
+    </div>
+  `;
+  const card = document.createElement('div');
+  card.className='card';
+  card.style.padding='20px';
+
+  if(mod.type==='info'){
+    card.innerHTML = `<div style="text-align:center;padding:30px 10px;">
+      <div class="disp" style="font-size:26px;font-weight:800;">${t('break_title',lang)}</div>
+      <div class="muted" style="margin-top:8px;">${t('break_sub',lang)}</div>
+    </div>`;
+  } else if(mod.type==='summary'){
+    card.appendChild(buildSummaryBlock());
+  } else if(mod.id==='ceo_discussion' && currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length){
+    card.appendChild(buildVoteForm(mod));
+  } else {
+    card.appendChild(buildAnswerForm(mod));
+  }
+  wrap.appendChild(card);
+
+  const changeLink = document.createElement('div');
+  changeLink.style.marginTop='12px'; changeLink.style.textAlign='center';
+  changeLink.innerHTML = `<button class="btn btn-ghost btn-sm" id="changeJoin">${t('change_join',lang)}</button>`;
+  wrap.appendChild(changeLink);
+
+  app.appendChild(wrap);
+  wrap.querySelectorAll('[data-l]').forEach(b=> b.onclick = ()=> setLang(b.dataset.l));
+  const cj = document.getElementById('changeJoin');
+  if(cj) cj.onclick = ()=>{ localStorage.removeItem('wtool_joined'); dept=''; render(); };
+}
+
+function renderJoin(){
+  app.innerHTML='';
+  const card = document.createElement('div');
+  card.className='card join-card';
+  card.innerHTML = `
+    <div class="disp" style="font-size:22px;font-weight:800;text-align:center;">${t('title',lang)}</div>
+    <div class="soft" style="text-align:center;font-size:13px;margin-bottom:18px;">${t('subtitle',lang)}</div>
+    <div style="margin-bottom:14px;">
+      <label class="field-label">${t('join_lang',lang)}</label>
+      <div class="lang-switch" style="width:fit-content;">
+        <button data-l="pl" class="${lang==='pl'?'active':''}">Polski</button>
+        <button data-l="en" class="${lang==='en'?'active':''}">English</button>
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label class="field-label">${t('join_name',lang)}</label>
+      <input class="field" id="nameInput" value="${escapeHtml(pname)}" maxlength="40" />
+    </div>
+    <div style="margin-bottom:18px;">
+      <label class="field-label">${t('join_dept',lang)}</label>
+      <div class="dept-pick" id="deptPick">
+        ${DEPTS.map(d=>`<div class="dept-opt" data-d="${d}">${t('dept_'+d,lang)}</div>`).join('')}
+      </div>
+    </div>
+    <button class="btn btn-primary" id="joinBtn" style="width:100%;" disabled>${t('join_button',lang)}</button>
+  `;
+  app.appendChild(card);
+  let picked = dept || '';
+  const opts = card.querySelectorAll('.dept-opt');
+  const joinBtn = card.querySelector('#joinBtn');
+  function refresh(){
+    opts.forEach(o=> o.classList.toggle('selected', o.dataset.d===picked));
+    joinBtn.disabled = !picked;
+  }
+  opts.forEach(o=> o.onclick = ()=>{ picked=o.dataset.d; refresh(); });
+  card.querySelectorAll('[data-l]').forEach(b=> b.onclick = ()=>{ setLang(b.dataset.l); renderJoin(); });
+  refresh();
+  joinBtn.onclick = ()=>{
+    dept = picked; pname = card.querySelector('#nameInput').value.trim();
+    localStorage.setItem('wtool_dept', dept); localStorage.setItem('wtool_name', pname); localStorage.setItem('wtool_joined','1');
+    render();
+  };
+}
+
+function buildAnswerForm(mod){
+  const box = document.createElement('div');
+  const num = mod.num!=null? mod.num+'. ':'';
+  let promptsHtml = '';
+  if(mod.needsDept && dept && mod.prompts && mod.prompts[dept]){
+    promptsHtml = `<div class="top-note" style="margin-bottom:14px;">
+      <strong>${t('suggested_prompts',lang)}:</strong>
+      <ul style="margin:6px 0 0 18px;padding:0;">${mod.prompts[dept][lang].map(p=>`<li>${escapeHtml(p)}</li>`).join('')}</ul>
+    </div>`;
+  }
+  box.innerHTML = `
+    <div style="margin-bottom:4px;" class="soft">${num}${escapeHtml((mod.title[lang]||'').replace(/^\d+\.\s*/,''))}</div>
+    <div class="disp" style="font-size:19px;font-weight:800;margin-bottom:4px;">${escapeHtml(mod.subtitle[lang]||mod.title[lang])}</div>
+    ${promptsHtml}
+    <div id="fieldsHost" class="col"></div>
+    <button class="btn btn-primary" id="submitBtn" style="margin-top:14px;">${t('submit',lang)}</button>
+  `;
+  const fh = box.querySelector('#fieldsHost');
+  mod.fields.forEach(f=>{
+    const d = document.createElement('div');
+    d.innerHTML = `<label class="field-label">${escapeHtml(f.label[lang])}</label><textarea class="field" data-fid="${f.id}"></textarea>`;
+    fh.appendChild(d);
+  });
+  box.querySelector('#submitBtn').onclick = async ()=>{
+    const values = {};
+    let any=false;
+    fh.querySelectorAll('textarea').forEach(ta=>{ const v=ta.value.trim(); if(v){ values[ta.dataset.fid]=v; any=true; } });
+    if(!any) return;
+    const btn = box.querySelector('#submitBtn'); btn.disabled=true;
+    try{
+      const { error } = await sb.from('responses').insert({ module_id: mod.id, dept: dept||null, name: pname||null, values });
+      if(error) throw error;
+      fh.querySelectorAll('textarea').forEach(ta=> ta.value='');
+      toast(t('thanks',lang));
+    }catch(e){ toast('Error: '+(e&&e.message||e)); }
+    btn.disabled=false;
+  };
+  return box;
+}
+
+function buildVoteForm(mod){
+  const box = document.createElement('div');
+  const opts = currentSession.vote_options||[];
+  box.innerHTML = `
+    <div class="disp" style="font-size:19px;font-weight:800;margin-bottom:4px;">${t('vote_title',lang)}</div>
+    <div class="soft" style="margin-bottom:12px;">${t('vote_hint',lang)}</div>
+    <div id="voteOpts" class="col"></div>
+    <button class="btn btn-primary" id="voteBtn" style="margin-top:14px;">${t('vote_submit',lang)}</button>
+  `;
+  const vo = box.querySelector('#voteOpts');
+  opts.forEach(o=>{
+    const row = document.createElement('label');
+    row.style.cssText='display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:9px;';
+    row.innerHTML = `<input type="checkbox" value="${escapeHtml(o.id)}" style="width:18px;height:18px;" /> <span>${escapeHtml(o.label||'')}</span>`;
+    vo.appendChild(row);
+  });
+  vo.addEventListener('change', ()=>{
+    const checked = vo.querySelectorAll('input:checked');
+    if(checked.length>3){ checked[0].checked=false; }
+  });
+  box.querySelector('#voteBtn').onclick = async ()=>{
+    const picks = Array.from(vo.querySelectorAll('input:checked')).map(i=>i.value);
+    if(!picks.length) return;
+    try{
+      const { error } = await sb.from('votes').upsert({ client_id: clientId, module_id: mod.id, picks, updated_at: new Date().toISOString() });
+      if(error) throw error;
+      toast(t('vote_thanks',lang));
+    }catch(e){ toast('Error: '+(e&&e.message||e)); }
+  };
+  return box;
+}
+
+/* ===================== Host view ===================== */
+let hostState = { timer:{ remaining:null, running:false, moduleId:null } };
+let timerInterval=null;
+
+function renderHostHeaderCount(){
+  const el = document.getElementById('peerCountVal');
+  if(el) el.textContent = peerCount;
+}
+
+function renderHost(){
+  if(!hostUnlocked()){ renderHostGate(); return; }
+  app.innerHTML='';
+  if(!sb){
+    app.innerHTML = `<div class="card" style="padding:20px;margin-top:20px;">${t('db_unavailable',lang)}</div>`;
+    return;
+  }
+  const mod = moduleById(currentSession.active_module) || MODULES[0];
+  const shell = document.createElement('div');
+  shell.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div class="disp" style="font-weight:800;font-size:20px;">${t('host_title',lang)} — ${t('title',lang)}</div>
+        <div class="soft" style="font-size:12.5px;">${t('subtitle',lang)}</div>
+      </div>
+      <div class="row" style="align-items:center;">
+        <span class="pill" style="background:var(--accent-soft);color:var(--accent-strong);">● <span id="peerCountVal">${peerCount}</span> ${t('online_now',lang)}</span>
+        <div class="lang-switch"><button data-l="pl" class="${lang==='pl'?'active':''}">PL</button><button data-l="en" class="${lang==='en'?'active':''}">EN</button></div>
+        <button class="btn btn-sm" id="resetBtn">${t('reset_btn',lang)}</button>
+      </div>
+    </div>
+    <div class="row" id="moduleNav" style="margin-bottom:16px;"></div>
+    <div class="grid-host" id="hostGrid"></div>
+  `;
+  app.appendChild(shell);
+
+  const nav = shell.querySelector('#moduleNav');
+  MODULES.forEach(m=>{
+    const label = m.type==='summary'? t('module_summary',lang) : (m.type==='info'? t('module_break',lang) : (m.num+'. '+(m.title[lang]||'').replace(/^\d+\.\s*/,'')));
+    const chip = document.createElement('button');
+    chip.className='module-chip'+(m.id===mod.id?' active':'');
+    chip.textContent = label;
+    chip.title = t('jump_hint',lang);
+    chip.onclick = ()=> setActiveModule(m.id);
+    nav.appendChild(chip);
+  });
+
+  const grid = shell.querySelector('#hostGrid');
+  grid.appendChild(buildSuflerPanel(mod));
+  grid.appendChild(buildResultsPanel(mod));
+
+  shell.querySelectorAll('[data-l]').forEach(b=> b.onclick = ()=> setLang(b.dataset.l));
+  shell.querySelector('#resetBtn').onclick = doReset;
+}
+
+async function setActiveModule(id){
+  try{
+    const { error } = await sb.from('session_state').update({ active_module:id, updated_at:new Date().toISOString() }).eq('id',1);
+    if(error) throw error;
+  } catch(e){ toast('Error: '+(e&&e.message||e)); }
+  resetTimerFor(id);
+}
+
+function buildSuflerPanel(mod){
+  const panel = document.createElement('div');
+  panel.className='card col'; panel.style.padding='18px'; panel.style.height='fit-content';
+  const dur = mod.duration!=null ? mod.duration : null;
+  panel.innerHTML = `
+    <div class="pill" style="background:var(--accent-soft);color:var(--accent-strong);width:fit-content;">${t('sufler',lang)}</div>
+    <div class="disp" style="font-size:18px;font-weight:800;margin-top:6px;">${escapeHtml(mod.title[lang])}</div>
+    ${mod.subtitle[lang]? `<div class="muted" style="font-style:italic;">${escapeHtml(mod.subtitle[lang])}</div>`:''}
+    ${dur!=null? `<div class="row" style="align-items:center;gap:10px;margin-top:6px;">
+      <span class="soft" style="font-size:12.5px;">${t('duration',lang)}: <strong>${dur} ${t('min',lang)}</strong></span>
+    </div>` : ''}
+    <hr class="hr" />
+    <div id="stepsList"></div>
+    ${mod.parallelNote? `<div class="top-note" style="margin-top:10px;">${t('parallel_note',lang)}</div>`:''}
+    ${dur!=null? buildTimerHtml(mod):''}
+    ${mod.needsDept? buildPromptBankHtml():''}
+  `;
+  const steps = panel.querySelector('#stepsList');
+  (mod.script[lang]||[]).forEach((s,i)=>{
+    const it = document.createElement('div'); it.className='step-item';
+    it.innerHTML = `<div class="step-num">${i+1}</div><div style="font-size:13.5px;line-height:1.45;">${escapeHtml(s)}</div>`;
+    steps.appendChild(it);
+  });
+  if(dur!=null){ wireTimer(panel, mod); }
+  if(mod.needsDept){ wirePromptBank(panel, mod); }
+
+  if(['frustration_wall','journey_sim','ceo_discussion','charter'].includes(mod.id)){
+    const bankBox = document.createElement('details');
+    bankBox.style.marginTop='12px';
+    bankBox.innerHTML = `<summary class="muted" style="cursor:pointer;font-size:12.5px;font-weight:600;">${t('optional_bank_note',lang)}</summary>`;
+    BANK.groups.forEach(g=>{
+      const gd = document.createElement('div'); gd.style.marginTop='8px';
+      gd.innerHTML = `<div style="font-weight:700;font-size:12.5px;">${escapeHtml(g.label[lang])}</div><ul style="margin:4px 0 0 16px;font-size:12.5px;">${g.q[lang].map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+      bankBox.appendChild(gd);
+    });
+    panel.appendChild(bankBox);
+  }
+  return panel;
+}
+
+function buildPromptBankHtml(){
+  return `<hr class="hr" /><div style="font-weight:700;font-size:13px;margin-bottom:6px;">${t('suggested_prompts',lang)}</div><div id="promptCols" class="row"></div>`;
+}
+function wirePromptBank(panel, mod){
+  const cols = panel.querySelector('#promptCols');
+  if(!cols) return;
+  DEPTS.forEach(d=>{
+    const c = document.createElement('div');
+    c.style.cssText='flex:1;min-width:140px;';
+    c.innerHTML = `<div class="dept-chip dept-${d}" style="margin-bottom:4px;">${t('dept_'+d,lang)}</div><ul style="margin:0 0 0 16px;font-size:12px;padding:0;">${mod.prompts[d][lang].map(p=>`<li>${escapeHtml(p)}</li>`).join('')}</ul>`;
+    cols.appendChild(c);
+  });
+}
+
+function buildTimerHtml(mod){
+  return `<hr class="hr" />
+  <div class="row" style="align-items:center;justify-content:space-between;">
+    <div id="timerDisplay" class="timer-box">${fmtTime((hostState.timer.moduleId===mod.id?hostState.timer.remaining:mod.duration*60))}</div>
+    <div class="row">
+      <button class="btn btn-sm" id="timerStart">${hostState.timer.running && hostState.timer.moduleId===mod.id? t('pause_timer',lang) : t('start_timer',lang)}</button>
+      <button class="btn btn-sm btn-ghost" id="timerReset">${t('reset_timer',lang)}</button>
+    </div>
+  </div>`;
+}
+function fmtTime(sec){
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec/60), s = sec%60;
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+function resetTimerFor(moduleId){
+  const mod = moduleById(moduleId);
+  clearInterval(timerInterval); timerInterval=null;
+  hostState.timer = { remaining: mod && mod.duration!=null ? mod.duration*60 : null, running:false, moduleId };
+  render();
+}
+function wireTimer(panel, mod){
+  if(hostState.timer.moduleId!==mod.id){ hostState.timer = { remaining: mod.duration*60, running:false, moduleId: mod.id }; }
+  const disp = panel.querySelector('#timerDisplay');
+  const startBtn = panel.querySelector('#timerStart');
+  const resetBtn = panel.querySelector('#timerReset');
+  function tick(){
+    hostState.timer.remaining -= 1;
+    if(hostState.timer.remaining<=0){ hostState.timer.remaining=0; clearInterval(timerInterval); timerInterval=null; hostState.timer.running=false; disp.textContent = t('time_up',lang); disp.style.color='var(--pri-high)'; startBtn.textContent=t('start_timer',lang); return; }
+    disp.textContent = fmtTime(hostState.timer.remaining);
+    disp.style.color = hostState.timer.remaining<=60 ? 'var(--pri-high)' : 'var(--text)';
+  }
+  startBtn.onclick = ()=>{
+    if(hostState.timer.running){ clearInterval(timerInterval); timerInterval=null; hostState.timer.running=false; startBtn.textContent=t('start_timer',lang); }
+    else { hostState.timer.running=true; startBtn.textContent=t('pause_timer',lang); timerInterval=setInterval(tick,1000); }
+  };
+  resetBtn.onclick = ()=>{ clearInterval(timerInterval); timerInterval=null; hostState.timer={remaining:mod.duration*60, running:false, moduleId:mod.id}; disp.textContent=fmtTime(hostState.timer.remaining); disp.style.color='var(--text)'; startBtn.textContent=t('start_timer',lang); };
+}
+
+function buildResultsPanel(mod){
+  const panel = document.createElement('div');
+  panel.className='card'; panel.style.padding='18px';
+  panel.innerHTML = `<div class="disp" style="font-size:17px;font-weight:800;margin-bottom:10px;">${t('results_live',lang)}</div><div id="resultsBody"></div>`;
+  const body = panel.querySelector('#resultsBody');
+
+  if(mod.type==='info'){
+    body.innerHTML = `<div class="muted">${t('break_sub',lang)}</div>`;
+    return panel;
+  }
+  if(mod.type==='summary'){
+    body.appendChild(buildSummaryBlock());
+    return panel;
+  }
+
+  subscribeFiltered('responses','module_id',mod.id, docs=> renderFieldsResults(body, mod, docs));
+  return panel;
+}
+
+function renderFieldsResults(body, mod, docs){
+  body.innerHTML='';
+  mod.fields.forEach(f=>{
+    const items = docs.filter(d=> d.values && d.values[f.id]).map(d=>({ text:d.values[f.id], dept:d.dept }));
+    const block = document.createElement('div');
+    block.style.marginBottom='18px';
+    block.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(f.label[lang])}</div>
+        <span class="pill" style="background:var(--surface-2);color:var(--text-muted);">${items.length} ${t('responses_n',lang)}</span>
+      </div>
+      <div class="scroll-list" style="margin-top:8px;" data-raw></div>
+      <div class="row" style="margin-top:8px;">
+        <button class="btn btn-sm" data-analyze="${f.id}" ${!items.length?'disabled':''}>${t('analyze_btn',lang)}</button>
+      </div>
+      <div data-analysis style="margin-top:10px;"></div>
+      <div data-bridge></div>
+    `;
+    const rawList = block.querySelector('[data-raw]');
+    if(!items.length){ rawList.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`; }
+    else items.slice().reverse().forEach(it=>{
+      const el = document.createElement('div'); el.className='resp-item';
+      el.innerHTML = (it.dept? `<span class="dept-chip dept-${it.dept}" style="margin-right:6px;">${t('dept_'+it.dept,lang)}</span>`:'') + escapeHtml(it.text);
+      rawList.appendChild(el);
+    });
+    body.appendChild(block);
+
+    const analysisHost = block.querySelector('[data-analysis]');
+    subscribeAnalysis(mod.id+'__'+f.id, data=>{ if(data) renderAnalysis(analysisHost, data); });
+
+    const bridgeHost = block.querySelector('[data-bridge]');
+    const btn = block.querySelector('[data-analyze]');
+    btn.onclick = ()=>{
+      if(!items.length){ toast(t('no_responses_ai',lang)); return; }
+      openAnalyzeBridge(bridgeHost, mod, f, items);
+    };
+  });
+
+  if(mod.id==='ceo_discussion') body.appendChild(buildVoteAdminBlock(mod, docs));
+  if(mod.id==='charter') body.appendChild(buildCharterAdminBlock(mod));
+}
+
+function renderAnalysis(host, data){
+  host.innerHTML = '';
+  const themes = data.themes||[];
+  if(!themes.length) return;
+  const wrap = document.createElement('div'); wrap.className='col';
+  themes.forEach(th=>{
+    const pri = ['high','medium','low'].includes(th.priority)? th.priority:'medium';
+    const card = document.createElement('div');
+    card.className='theme-card';
+    card.style.borderLeftColor = `var(--pri-${pri})`;
+    card.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <strong style="font-size:13.5px;">${escapeHtml(th.theme||'')}</strong>
+        <span class="pill pri-${pri}">${t('priority_'+pri,lang)} · ${th.count||0}</span>
+      </div>
+      ${(th.examples||[]).length? `<div class="soft" style="margin-top:6px;font-size:12px;">${th.examples.map(e=>'"'+escapeHtml(e)+'"').join(' · ')}</div>`:''}
+    `;
+    wrap.appendChild(card);
+  });
+  host.appendChild(wrap);
+}
+
+/* ---- Manual AI bridge (copy prompt to Claude chat, paste JSON back) ---- */
+function buildAiBridgeBox(promptText, onSave){
+  const box = document.createElement('div');
+  box.className='ai-bridge';
+  box.innerHTML = `
+    <div style="font-size:12.5px;margin-bottom:6px;"><span class="step-badge">1</span>${t('bridge_step1',lang)}</div>
+    <textarea readonly>${escapeHtml(promptText)}</textarea>
+    <div class="row" style="margin-top:6px;">
+      <button class="btn btn-sm" data-copy>${t('bridge_copy',lang)}</button>
+      <button class="btn btn-sm btn-ghost" data-close>${t('hide_bridge',lang)}</button>
+    </div>
+    <div style="font-size:12.5px;margin:12px 0 6px;"><span class="step-badge">2</span>${t('bridge_step2',lang)}</div>
+    <textarea data-result placeholder='{"themes":[...]}'></textarea>
+    <div id="bridgeErr" class="muted" style="color:var(--pri-high);font-size:12px;margin-top:4px;" hidden>${t('bridge_error',lang)}</div>
+    <button class="btn btn-sm btn-primary" data-save style="margin-top:8px;">${t('bridge_save',lang)}</button>
+  `;
+  box.querySelector('[data-copy]').onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(promptText); toast(t('bridge_copied',lang)); }
+    catch(e){ box.querySelector('textarea').select(); document.execCommand('copy'); toast(t('bridge_copied',lang)); }
+  };
+  box.querySelector('[data-close]').onclick = ()=> box.remove();
+  box.querySelector('[data-save]').onclick = ()=>{
+    const raw = box.querySelector('[data-result]').value.trim();
+    const err = box.querySelector('#bridgeErr');
+    let parsed;
+    try{
+      const start = raw.indexOf('{')>=0 ? Math.min(...[raw.indexOf('{'), raw.indexOf('[')].filter(i=>i>=0)) : -1;
+      const jsonSlice = start>=0 ? raw.slice(start) : raw;
+      parsed = JSON.parse(jsonSlice);
+    }catch(e){ err.hidden=false; return; }
+    err.hidden=true;
+    onSave(parsed);
+    box.remove();
+  };
+  return box;
+}
+
+function openAnalyzeBridge(host, mod, field, items){
+  host.innerHTML='';
+  const list = items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
+  const prompt = lang==='pl'
+    ? `Oto surowe odpowiedzi uczestników warsztatu na pytanie: "${field.label.pl}"\n\n${list}\n\nPogrupuj je w 3-6 tematycznych kategorii. Dla każdej podaj: krótką nazwę tematu po polsku, liczbę pasujących odpowiedzi, priorytet ("high"/"medium"/"low" na podstawie częstości i wagi problemu) oraz maks. 2 krótkie przykładowe cytaty. Odpowiedz WYŁĄCZNIE w formacie JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, posortowane malejąco po priorytecie.`
+    : `Here are raw workshop participant answers to the question: "${field.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. For each give: a short theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes. Reply ONLY with JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, sorted by priority descending.`;
+  const box = buildAiBridgeBox(prompt, async (parsed)=>{
+    const themes = (parsed && parsed.themes) || (Array.isArray(parsed)? parsed: []);
+    try{
+      const { error } = await sb.from('analysis').upsert({ key: mod.id+'__'+field.id, themes, updated_at: new Date().toISOString() });
+      if(error) throw error;
+    }catch(e){ toast('Error: '+(e&&e.message||e)); }
+  });
+  host.appendChild(box);
+}
+
+function buildVoteAdminBlock(mod, docs){
+  const box = document.createElement('div'); box.className='card'; box.style.cssText='padding:14px;margin-top:6px;background:var(--surface-2);border-style:dashed;';
+  const hasOptions = currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length;
+  box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('vote_results',lang)}</div><div data-genhost></div>`;
+  const genHost = box.querySelector('[data-genhost]');
+  const genBtn = document.createElement('button');
+  genBtn.className='btn btn-sm'; genBtn.textContent = t('generate_vote_list',lang);
+  genBtn.onclick = ()=>{
+    const items = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
+    if(!items.length){ toast(t('no_responses_ai',lang)); return; }
+    const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
+    const prompt = lang==='pl'
+      ? `Oto propozycje zmian od uczestników warsztatu:\n\n${list}\n\nWyodrębnij unikalne, konkretne pomysły (połącz duplikaty i bardzo podobne). Zwróć 5-10 pozycji. Odpowiedz WYŁĄCZNIE w formacie JSON: {"options":[string,...]} — każdy string to krótki, zrozumiały opis pomysłu po polsku.`
+      : `Here are improvement proposals from workshop participants:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates). Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
+    genHost.innerHTML='';
+    const box = buildAiBridgeBox(prompt, async (parsed)=>{
+      const opts = (parsed && parsed.options) || [];
+      const voteOptions = opts.map((label,i)=>({ id:'opt'+i, label }));
+      try{
+        await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
+        await sb.from('votes').delete().not('client_id','is',null);
+      }catch(e){ toast('Error: '+(e&&e.message||e)); }
+    });
+    genHost.innerHTML=''; genHost.appendChild(box);
+  };
+  genHost.appendChild(genBtn);
+
+  const tally = document.createElement('div'); tally.style.marginTop='12px'; tally.className='col';
+  box.appendChild(tally);
+  if(hasOptions){
+    subscribeFiltered('votes','module_id',mod.id, voteDocs=>{
+      const counts = {}; currentSession.vote_options.forEach(o=> counts[o.id]=0);
+      voteDocs.forEach(d=>{ (d.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }); });
+      const max = Math.max(1, ...Object.values(counts));
+      const sorted = currentSession.vote_options.slice().sort((a,b)=> (counts[b.id]||0)-(counts[a.id]||0));
+      tally.innerHTML='';
+      sorted.forEach((o,i)=>{
+        const c = counts[o.id]||0;
+        const row = document.createElement('div');
+        row.className='row'; row.style.alignItems='center';
+        row.innerHTML = `<div style="width:26px;font-weight:800;" class="${i<3?'':'muted'}">${i+1}</div>
+          <div style="flex:1;font-size:13px;">${escapeHtml(o.label||'')}</div>
+          <div class="bar-track" style="max-width:160px;"><div class="bar-fill" style="width:${(c/max*100)}%;"><span class="mono" style="color:#fff;font-size:11px;">${c}</span></div></div>`;
+        tally.appendChild(row);
+      });
+    });
+  } else {
+    tally.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_vote_yet',lang)}</div>`;
+  }
+  return box;
+}
+
+function buildCharterAdminBlock(mod){
+  const box = document.createElement('div'); box.className='card'; box.style.cssText='padding:14px;margin-top:6px;background:var(--surface-2);border-style:dashed;';
+  box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('select_charter',lang)}</div>`;
+  const listHost = document.createElement('div'); listHost.className='col';
+  box.appendChild(listHost);
+
+  subscribeAnalysis(mod.id+'__principle', data=>{
+    listHost.innerHTML='';
+    if(!data || !(data.themes||[]).length){
+      listHost.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('candidate_themes_empty',lang)}</div>`;
+      return;
+    }
+    const themes = data.themes;
+    themes.forEach(th=>{
+      const row = document.createElement('label');
+      row.style.cssText='display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 0;';
+      const checked = (currentSession.charter||[]).includes(th.theme);
+      row.innerHTML = `<input type="checkbox" value="${escapeHtml(th.theme)}" ${checked?'checked':''} style="margin-top:3px;" /> <span><strong>${escapeHtml(th.theme)}</strong> ${th.examples&&th.examples[0]? '— "'+escapeHtml(th.examples[0])+'"':''}</span>`;
+      listHost.appendChild(row);
+    });
+    const approveBtn = document.createElement('button');
+    approveBtn.className='btn btn-sm btn-primary'; approveBtn.style.marginTop='10px';
+    approveBtn.textContent = t('approve_charter',lang);
+    approveBtn.onclick = async ()=>{
+      const chosen = Array.from(listHost.querySelectorAll('input:checked')).map(i=>i.value);
+      try{
+        await sb.from('session_state').update({ charter: chosen, updated_at:new Date().toISOString() }).eq('id',1);
+        toast(t('charter_approved',lang));
+      }catch(e){ toast('Error: '+(e&&e.message||e)); }
+    };
+    listHost.appendChild(approveBtn);
+  });
+  return box;
+}
+
+/* ===================== Summary block (shared by host+participant) ===================== */
+function buildSummaryBlock(){
+  const el = document.createElement('div');
+  el.innerHTML = `<div class="disp" style="font-size:19px;font-weight:800;margin-bottom:12px;">${t('summary_title',lang)}</div><div id="sumBody" class="col"></div>`;
+  const body = el.querySelector('#sumBody');
+
+  const sec = (titleKey)=>{ const d=document.createElement('div'); d.innerHTML=`<div style="font-weight:700;font-size:14px;margin-bottom:6px;">${t(titleKey,lang)}</div><div data-c class="col"></div>`; body.appendChild(d); return d.querySelector('[data-c]'); };
+
+  const checklistC = sec('summary_checklist');
+  const ideasC = sec('summary_ideas');
+  const charterC = sec('summary_charter');
+  const commitC = sec('summary_commit');
+
+  if(sb){
+    subscribeFiltered('responses','module_id','journey_sim', docs=>{
+      const items = docs.filter(d=>d.values&&d.values.checklist_item).map(d=>d.values.checklist_item);
+      checklistC.innerHTML = items.length? items.map(x=>`<div class="resp-item">☑ ${escapeHtml(x)}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+    });
+
+    subscribeFiltered('votes','module_id','ceo_discussion', voteDocs=>{
+      const opts = currentSession.vote_options||[];
+      if(!opts.length){ ideasC.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`; return; }
+      const counts={}; opts.forEach(o=>counts[o.id]=0);
+      voteDocs.forEach(d=> (d.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
+      const top3 = opts.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)).slice(0,3);
+      ideasC.innerHTML = top3.map((o,i)=>`<div class="resp-item"><strong>#${i+1}</strong> ${escapeHtml(o.label||'')} <span class="soft">(${counts[o.id]||0})</span></div>`).join('');
+    });
+
+    charterC.innerHTML = (currentSession.charter||[]).length ? currentSession.charter.map(c=>`<div class="resp-item">📌 ${escapeHtml(c)}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+
+    subscribeFiltered('responses','module_id','closing', docs=>{
+      commitC.innerHTML = docs.length ? docs.map(d=>`<div class="resp-item">${d.values.start_tomorrow? '➡ '+escapeHtml(d.values.start_tomorrow)+'<br/>':''}${d.values.need_from_others? '🤝 '+escapeHtml(d.values.need_from_others):''}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+    });
+  }
+  return el;
+}
+
+/* ===================== Reset ===================== */
+async function doReset(){
+  if(!confirm(t('reset_confirm',lang))) return;
+  try{
+    await sb.from('responses').delete().not('id','is',null);
+    await sb.from('votes').delete().not('client_id','is',null);
+    await sb.from('analysis').delete().not('key','is',null);
+    await sb.from('session_state').update({ active_module:'welcome', vote_module_id:null, vote_options:[], charter:[], updated_at:new Date().toISOString() }).eq('id',1);
+    toast('OK');
+  }catch(e){ toast('Error: '+(e&&e.message||e)); }
+}
+
+boot();
+</script>
+</body>
+</html>
