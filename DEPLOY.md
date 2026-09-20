@@ -27,6 +27,12 @@
 - Nie wymaga zmian w schemacie bazy — funkcja tylko odczytuje istniejące dane z `responses`, `analysis`, `votes` i `session_state`.
 - **Automatyczne generowanie:** gdy moderator wejdzie na ekran "Podsumowanie" (klik w moduł 8 albo automatyczne przejście), PDF generuje się i okno drukowania otwiera się samo — bez potrzeby klikania przycisku. Uruchamia się tylko raz przy wejściu na ten ekran (nie odpala się ponownie przy zmianie języka czy dopływie nowych danych); przycisk "📄 Wygeneruj PDF" zostaje, aby można było wygenerować raport ponownie w dowolnym momencie (np. po dodaniu tłumaczenia).
 
+**Aktualizacja (2026-09-20, komentarze moderatora i edycja wniosków AI):**
+- Przy każdym pytaniu (moduły 1–4, 7 oraz karta współpracy) moderator ma teraz pod wynikami analizy AI przycisk **"✏️ Edytuj wnioski"** — otwiera edytowalne pole z surowym JSON-em wygenerowanych tematów, które można ręcznie poprawić (np. zmienić nazwę tematu, priorytet, liczbę, przykłady) i zapisać.
+- Pod tym polem znajduje się zawsze widoczne pole **"🗨️ Komentarz moderatora"** — dowolny tekst dodany przez moderatora do danego pytania, zapisywany osobno od wniosków AI (nie trzeba mieć wygenerowanej analizy AI, żeby dodać sam komentarz).
+- Obie rzeczy — poprawione wnioski i komentarz moderatora — pojawiają się też w generowanym raporcie PDF, pod wnioskami AI dla danego pytania.
+- Wymagało to nowej kolumny `comment` w tabeli `analysis` (już wgrane na żywej bazie Supabase oraz do `schema.sql`).
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).
