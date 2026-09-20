@@ -162,6 +162,8 @@ const UI = {
   change_join:{pl:'Zmień dział / język',en:'Change department / language'},
   submit:{pl:'Wyślij odpowiedź',en:'Submit answer'},
   thanks:{pl:'Dziękujemy! Twoja odpowiedź została zapisana.',en:'Thanks! Your answer has been recorded.'},
+  answer_sent_title:{pl:'✅ Odpowiedź została wysłana',en:'✅ Your answer has been sent'},
+  answer_sent_sub:{pl:'Dziękujemy! Poczekaj na kolejny etap warsztatu — moderator przejdzie dalej za chwilę.',en:'Thanks! Please wait for the next stage — the moderator will move on shortly.'},
   waiting:{pl:'Moderator jeszcze nie rozpoczął tego etapu. Poczekaj na instrukcję.',en:'The moderator has not started this stage yet. Please wait.'},
   break_title:{pl:'☕ Przerwa',en:'☕ Break'},
   break_sub:{pl:'Wróć na swoje miejsce za kilka minut.',en:'Please be back in your seat shortly.'},
@@ -513,6 +515,8 @@ function renderParticipant(){
     card.appendChild(buildSummaryBlock(true));
   } else if(mod.id==='ceo_discussion' && currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length){
     card.appendChild(buildVoteForm(mod));
+  } else if(localStorage.getItem(submittedKey(mod.id))){
+    card.appendChild(buildSubmittedNotice(mod));
   } else {
     card.appendChild(buildAnswerForm(mod));
   }
@@ -573,6 +577,19 @@ function renderJoin(){
   };
 }
 
+function submittedKey(modId){ return 'wtool_submitted_'+modId; }
+
+function buildSubmittedNotice(mod){
+  const box = document.createElement('div');
+  box.style.textAlign='center'; box.style.padding='30px 10px';
+  box.innerHTML = `
+    <div style="font-size:40px;margin-bottom:10px;">✅</div>
+    <div class="disp" style="font-size:19px;font-weight:800;">${t('answer_sent_title',lang)}</div>
+    <div class="muted" style="margin-top:8px;">${t('answer_sent_sub',lang)}</div>
+  `;
+  return box;
+}
+
 function buildAnswerForm(mod){
   const box = document.createElement('div');
   const num = mod.num!=null? mod.num+'. ':'';
@@ -605,8 +622,10 @@ function buildAnswerForm(mod){
     try{
       const { error } = await sb.from('responses').insert({ module_id: mod.id, dept: dept||null, name: pname||null, values });
       if(error) throw error;
-      fh.querySelectorAll('textarea').forEach(ta=> ta.value='');
+      localStorage.setItem(submittedKey(mod.id), '1');
       toast(t('thanks',lang));
+      render();
+      return;
     }catch(e){ toast('Error: '+(e&&e.message||e)); }
     btn.disabled=false;
   };

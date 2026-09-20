@@ -33,6 +33,11 @@
 - Obie rzeczy — poprawione wnioski i komentarz moderatora — pojawiają się też w generowanym raporcie PDF, pod wnioskami AI dla danego pytania.
 - Wymagało to nowej kolumny `comment` w tabeli `analysis` (już wgrane na żywej bazie Supabase oraz do `schema.sql`).
 
+**Aktualizacja (2026-09-20, potwierdzenie wysłania odpowiedzi):**
+- Po wysłaniu odpowiedzi przez uczestnika (moduły 1–4, 7) ekran pokazuje teraz trwały komunikat **"✅ Odpowiedź została wysłana"** zamiast czyścić formularz i pozwalać na ponowne wysłanie. Komunikat zostaje widoczny na urządzeniu uczestnika, dopóki moderator nie przejdzie do kolejnego etapu — nawet jeśli w międzyczasie coś innego odświeży ekran (np. start/pauza timera).
+- Stan "wysłano odpowiedź dla modułu X" jest zapamiętywany lokalnie w przeglądarce uczestnika (localStorage), więc jeśli moderator wróci do wcześniejszego, już wypełnionego modułu, uczestnik nadal widzi potwierdzenie, a nie pusty formularz.
+- Nie dotyczy głosowania (moduł 5) — tam uczestnik może zmienić swój głos, więc formularz głosowania pozostaje edytowalny jak dotychczas.
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).
