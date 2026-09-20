@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pl">
 <head>
 <meta charset="utf-8" />
@@ -102,6 +102,14 @@ select.field, input.field{width:100%; padding:10px 12px; border-radius:var(--rad
 .ai-bridge{border:1.5px dashed var(--border); border-radius:var(--radius-sm); padding:12px; margin-top:8px; background:var(--surface-2);}
 .ai-bridge textarea{width:100%; min-height:90px; font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text);}
 .step-badge{display:inline-flex; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:11px; font-weight:800; align-items:center; justify-content:center; margin-right:6px;}
+body.screen-mode{font-size:18px;}
+body.screen-mode .wrap{max-width:1400px;}
+body.screen-mode .resp-item{font-size:17px; padding:12px 16px;}
+body.screen-mode .theme-card{padding:16px 20px;}
+body.screen-mode .theme-card strong{font-size:17px;}
+body.screen-mode .pill{font-size:13.5px; padding:5px 13px;}
+body.screen-mode .scroll-list{max-height:340px;}
+body.screen-mode .bar-track{height:30px;}
 </style>
 </head>
 <body>
@@ -140,10 +148,13 @@ const UI = {
   online_now:{pl:'online',en:'online'},
   host_title:{pl:'Panel moderatora',en:'Moderator panel'},
   host_pin_title:{pl:'Panel moderatora — dostęp',en:'Moderator panel — access'},
+  screen_pin_title:{pl:'Ekran warsztatu — dostęp',en:'Workshop screen — access'},
+  screen_open_host:{pl:'Otwórz panel moderatora',en:'Open moderator panel'},
   host_pin_hint:{pl:'Wpisz PIN moderatora',en:'Enter the moderator PIN'},
   host_pin_wrong:{pl:'Nieprawidłowy PIN',en:'Incorrect PIN'},
   enter:{pl:'Wejdź',en:'Enter'},
   reset_btn:{pl:'Nowa sesja (reset)',en:'New session (reset)'},
+  open_screen_btn:{pl:'📽️ Otwórz ekran',en:'📽️ Open screen'},
   reset_confirm:{pl:'To usunie wszystkie odpowiedzi, głosy i analizy z tej sesji. Kontynuować?',en:'This will delete all responses, votes and analysis from this session. Continue?'},
   sufler:{pl:'Sufler moderatora',en:"Moderator's script"},
   duration:{pl:'Czas',en:'Duration'},
@@ -301,14 +312,15 @@ const DEPTS = ['sales','rnd','pm'];
 
 /* ===================== State & helpers ===================== */
 const qs = new URLSearchParams(location.search);
-const MODE = qs.get('mode')==='host' ? 'host':'participant';
+const _modeParam = qs.get('mode');
+const MODE = _modeParam==='host' ? 'host' : (_modeParam==='screen' ? 'screen' : 'participant');
 let lang = localStorage.getItem('wtool_lang') || 'pl';
 let dept = localStorage.getItem('wtool_dept') || '';
 let pname = localStorage.getItem('wtool_name') || '';
 let clientId = localStorage.getItem('wtool_client_id');
 if(!clientId){ clientId = 'c'+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('wtool_client_id', clientId); }
 
-let currentSession = { active_module:'welcome', vote_options:[], vote_module_id:null, charter:[] };
+let currentSession = { active_module:'welcome', vote_options:[], vote_module_id:null, charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null };
 let peerCount = 1;
 const app = document.getElementById('app');
 
@@ -360,6 +372,7 @@ function subscribeAnalysis(key, cb){
 
 /* ===================== Boot ===================== */
 function boot(){
+  if(MODE==='screen') document.body.classList.add('screen-mode');
   if(!sb){ render(); return; }
 
   const presenceChannel = sb.channel('presence-room', { config:{ presence:{ key: clientId } } });
@@ -378,7 +391,9 @@ function boot(){
 
 /* ===================== Generic render dispatch ===================== */
 function render(){
-  if(MODE==='host') renderHost(); else renderParticipant();
+  if(MODE==='host') renderHost();
+  else if(MODE==='screen') renderScreen();
+  else renderParticipant();
 }
 
 /* ===================== Host PIN gate ===================== */
@@ -388,7 +403,7 @@ function renderHostGate(){
   const card = document.createElement('div');
   card.className='card join-card';
   card.innerHTML = `
-    <div class="disp" style="font-size:19px;font-weight:800;text-align:center;">${t('host_pin_title',lang)}</div>
+    <div class="disp" style="font-size:19px;font-weight:800;text-align:center;">${t(MODE==='screen'?'screen_pin_title':'host_pin_title',lang)}</div>
     <div class="muted" style="text-align:center;font-size:13px;margin:8px 0 16px;">${t('host_pin_hint',lang)}</div>
     <input class="field" id="pinInput" type="password" inputmode="numeric" style="text-align:center;letter-spacing:.3em;font-size:20px;" />
     <div id="pinErr" class="muted" style="color:var(--pri-high);font-size:12.5px;margin-top:8px;text-align:center;" hidden>${t('host_pin_wrong',lang)}</div>
@@ -573,8 +588,7 @@ function buildVoteForm(mod){
 }
 
 /* ===================== Host view ===================== */
-let hostState = { timer:{ remaining:null, running:false, moduleId:null } };
-let timerInterval=null;
+let activeTimerInterval=null;
 
 function renderHostHeaderCount(){
   const el = document.getElementById('peerCountVal');
@@ -599,6 +613,7 @@ function renderHost(){
       <div class="row" style="align-items:center;">
         <span class="pill" style="background:var(--accent-soft);color:var(--accent-strong);">● <span id="peerCountVal">${peerCount}</span> ${t('online_now',lang)}</span>
         <div class="lang-switch"><button data-l="pl" class="${lang==='pl'?'active':''}">PL</button><button data-l="en" class="${lang==='en'?'active':''}">EN</button></div>
+        <button class="btn btn-sm" id="openScreenBtn">${t('open_screen_btn',lang)}</button>
         <button class="btn btn-sm" id="resetBtn">${t('reset_btn',lang)}</button>
       </div>
     </div>
@@ -624,14 +639,70 @@ function renderHost(){
 
   shell.querySelectorAll('[data-l]').forEach(b=> b.onclick = ()=> setLang(b.dataset.l));
   shell.querySelector('#resetBtn').onclick = doReset;
+  shell.querySelector('#openScreenBtn').onclick = ()=>{
+    const url = new URL(location.href); url.searchParams.set('mode','screen');
+    window.open(url.toString(), '_blank');
+  };
+}
+
+function renderScreen(){
+  if(!hostUnlocked()){ renderHostGate(); return; }
+  app.innerHTML='';
+  if(!sb){
+    app.innerHTML = `<div class="card" style="padding:20px;margin-top:20px;">${t('db_unavailable',lang)}</div>`;
+    return;
+  }
+  const mod = moduleById(currentSession.active_module) || MODULES[0];
+  const shell = document.createElement('div');
+  const label = mod.type==='summary'? t('module_summary',lang) : (mod.type==='info'? t('module_break',lang) : (mod.num+'. '+(mod.title[lang]||'').replace(/^\d+\.\s*/,'')));
+  shell.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:18px;">
+      <div>
+        <div class="pill" style="background:var(--accent-soft);color:var(--accent-strong);width:fit-content;">${escapeHtml(t('title',lang))}</div>
+        <div class="disp" style="font-weight:800;font-size:30px;margin-top:6px;">${escapeHtml(label)}</div>
+        ${mod.subtitle[lang]? `<div class="soft" style="font-size:17px;font-style:italic;">${escapeHtml(mod.subtitle[lang])}</div>`:''}
+      </div>
+      <div id="screenTimerWrap"></div>
+    </div>
+    <div id="screenBody"></div>
+  `;
+  app.appendChild(shell);
+
+  if(mod.duration!=null){
+    const tw = shell.querySelector('#screenTimerWrap');
+    tw.innerHTML = `<div id="timerDisplay" class="timer-box" style="font-size:52px;"></div>`;
+    attachReadonlyTimer(tw, mod);
+  }
+
+  const body = shell.querySelector('#screenBody');
+  if(mod.type==='info'){
+    body.innerHTML = `<div class="card" style="padding:50px 20px;text-align:center;">
+      <div class="disp" style="font-size:44px;font-weight:800;">${t('break_title',lang)}</div>
+      <div class="muted" style="font-size:19px;margin-top:12px;">${t('break_sub',lang)}</div>
+    </div>`;
+  } else if(mod.type==='summary'){
+    const card = document.createElement('div'); card.className='card'; card.style.padding='26px';
+    card.appendChild(buildSummaryBlock());
+    body.appendChild(card);
+  } else {
+    const card = document.createElement('div'); card.className='card'; card.style.padding='24px';
+    card.innerHTML = `<div class="disp" style="font-size:22px;font-weight:800;margin-bottom:14px;">${t('results_live',lang)}</div><div id="screenResultsBody"></div>`;
+    body.appendChild(card);
+    subscribeFiltered('responses','module_id',mod.id, docs=> renderFieldsResults(card.querySelector('#screenResultsBody'), mod, docs, true));
+  }
 }
 
 async function setActiveModule(id){
+  const mod = moduleById(id);
   try{
-    const { error } = await sb.from('session_state').update({ active_module:id, updated_at:new Date().toISOString() }).eq('id',1);
+    const patch = { active_module:id, updated_at:new Date().toISOString() };
+    if(mod && mod.duration!=null){
+      patch.timer_module_id = id; patch.timer_remaining_seconds = mod.duration*60;
+      patch.timer_running = false; patch.timer_started_at = null;
+    }
+    const { error } = await sb.from('session_state').update(patch).eq('id',1);
     if(error) throw error;
   } catch(e){ toast('Error: '+(e&&e.message||e)); }
-  resetTimerFor(id);
 }
 
 function buildSuflerPanel(mod){
@@ -691,10 +762,10 @@ function wirePromptBank(panel, mod){
 function buildTimerHtml(mod){
   return `<hr class="hr" />
   <div class="row" style="align-items:center;justify-content:space-between;">
-    <div id="timerDisplay" class="timer-box">${fmtTime((hostState.timer.moduleId===mod.id?hostState.timer.remaining:mod.duration*60))}</div>
+    <div id="timerDisplay" class="timer-box"></div>
     <div class="row">
-      <button class="btn btn-sm" id="timerStart">${hostState.timer.running && hostState.timer.moduleId===mod.id? t('pause_timer',lang) : t('start_timer',lang)}</button>
-      <button class="btn btn-sm btn-ghost" id="timerReset">${t('reset_timer',lang)}</button>
+      <button class="btn btn-sm" id="timerStartBtn"></button>
+      <button class="btn btn-sm btn-ghost" id="timerResetBtn">${t('reset_timer',lang)}</button>
     </div>
   </div>`;
 }
@@ -703,28 +774,53 @@ function fmtTime(sec){
   const m = Math.floor(sec/60), s = sec%60;
   return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
 }
-function resetTimerFor(moduleId){
-  const mod = moduleById(moduleId);
-  clearInterval(timerInterval); timerInterval=null;
-  hostState.timer = { remaining: mod && mod.duration!=null ? mod.duration*60 : null, running:false, moduleId };
-  render();
+function computeRemaining(mod){
+  if(mod.duration==null) return null;
+  if(currentSession.timer_module_id!==mod.id) return mod.duration*60;
+  let rem = currentSession.timer_remaining_seconds!=null ? currentSession.timer_remaining_seconds : mod.duration*60;
+  if(currentSession.timer_running && currentSession.timer_started_at){
+    const elapsed = Math.floor((Date.now() - new Date(currentSession.timer_started_at).getTime())/1000);
+    rem = rem - elapsed;
+  }
+  return Math.max(0, rem);
+}
+function isTimerRunning(mod){ return !!(currentSession.timer_running && currentSession.timer_module_id===mod.id); }
+async function timerStart(mod){
+  const rem = computeRemaining(mod);
+  try{ await sb.from('session_state').update({ timer_module_id:mod.id, timer_remaining_seconds:rem, timer_running:true, timer_started_at:new Date().toISOString(), updated_at:new Date().toISOString() }).eq('id',1); }
+  catch(e){ toast('Error: '+(e&&e.message||e)); }
+}
+async function timerPause(mod){
+  const rem = computeRemaining(mod);
+  try{ await sb.from('session_state').update({ timer_remaining_seconds:rem, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1); }
+  catch(e){ toast('Error: '+(e&&e.message||e)); }
+}
+async function timerReset(mod){
+  try{ await sb.from('session_state').update({ timer_module_id:mod.id, timer_remaining_seconds:mod.duration*60, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1); }
+  catch(e){ toast('Error: '+(e&&e.message||e)); }
+}
+function paintTimer(disp, mod){
+  const rem = computeRemaining(mod);
+  disp.textContent = rem<=0 ? t('time_up',lang) : fmtTime(rem);
+  disp.style.color = rem<=60 ? 'var(--pri-high)' : 'var(--text)';
 }
 function wireTimer(panel, mod){
-  if(hostState.timer.moduleId!==mod.id){ hostState.timer = { remaining: mod.duration*60, running:false, moduleId: mod.id }; }
   const disp = panel.querySelector('#timerDisplay');
-  const startBtn = panel.querySelector('#timerStart');
-  const resetBtn = panel.querySelector('#timerReset');
-  function tick(){
-    hostState.timer.remaining -= 1;
-    if(hostState.timer.remaining<=0){ hostState.timer.remaining=0; clearInterval(timerInterval); timerInterval=null; hostState.timer.running=false; disp.textContent = t('time_up',lang); disp.style.color='var(--pri-high)'; startBtn.textContent=t('start_timer',lang); return; }
-    disp.textContent = fmtTime(hostState.timer.remaining);
-    disp.style.color = hostState.timer.remaining<=60 ? 'var(--pri-high)' : 'var(--text)';
-  }
-  startBtn.onclick = ()=>{
-    if(hostState.timer.running){ clearInterval(timerInterval); timerInterval=null; hostState.timer.running=false; startBtn.textContent=t('start_timer',lang); }
-    else { hostState.timer.running=true; startBtn.textContent=t('pause_timer',lang); timerInterval=setInterval(tick,1000); }
-  };
-  resetBtn.onclick = ()=>{ clearInterval(timerInterval); timerInterval=null; hostState.timer={remaining:mod.duration*60, running:false, moduleId:mod.id}; disp.textContent=fmtTime(hostState.timer.remaining); disp.style.color='var(--text)'; startBtn.textContent=t('start_timer',lang); };
+  const startBtn = panel.querySelector('#timerStartBtn');
+  const resetBtn = panel.querySelector('#timerResetBtn');
+  function paint(){ paintTimer(disp, mod); startBtn.textContent = isTimerRunning(mod)? t('pause_timer',lang) : t('start_timer',lang); }
+  paint();
+  clearInterval(activeTimerInterval);
+  activeTimerInterval = setInterval(paint, 1000);
+  startBtn.onclick = ()=>{ isTimerRunning(mod) ? timerPause(mod) : timerStart(mod); };
+  resetBtn.onclick = ()=> timerReset(mod);
+}
+function attachReadonlyTimer(hostEl, mod){
+  const disp = hostEl.querySelector('#timerDisplay');
+  function paint(){ paintTimer(disp, mod); }
+  paint();
+  clearInterval(activeTimerInterval);
+  activeTimerInterval = setInterval(paint, 1000);
 }
 
 function buildResultsPanel(mod){
@@ -746,7 +842,7 @@ function buildResultsPanel(mod){
   return panel;
 }
 
-function renderFieldsResults(body, mod, docs){
+function renderFieldsResults(body, mod, docs, readOnly){
   body.innerHTML='';
   mod.fields.forEach(f=>{
     const items = docs.filter(d=> d.values && d.values[f.id]).map(d=>({ text:d.values[f.id], dept:d.dept }));
@@ -758,11 +854,11 @@ function renderFieldsResults(body, mod, docs){
         <span class="pill" style="background:var(--surface-2);color:var(--text-muted);">${items.length} ${t('responses_n',lang)}</span>
       </div>
       <div class="scroll-list" style="margin-top:8px;" data-raw></div>
-      <div class="row" style="margin-top:8px;">
+      ${readOnly? '' : `<div class="row" style="margin-top:8px;">
         <button class="btn btn-sm" data-analyze="${f.id}" ${!items.length?'disabled':''}>${t('analyze_btn',lang)}</button>
-      </div>
+      </div>`}
       <div data-analysis style="margin-top:10px;"></div>
-      <div data-bridge></div>
+      ${readOnly? '' : '<div data-bridge></div>'}
     `;
     const rawList = block.querySelector('[data-raw]');
     if(!items.length){ rawList.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`; }
@@ -776,16 +872,18 @@ function renderFieldsResults(body, mod, docs){
     const analysisHost = block.querySelector('[data-analysis]');
     subscribeAnalysis(mod.id+'__'+f.id, data=>{ if(data) renderAnalysis(analysisHost, data); });
 
-    const bridgeHost = block.querySelector('[data-bridge]');
-    const btn = block.querySelector('[data-analyze]');
-    btn.onclick = ()=>{
-      if(!items.length){ toast(t('no_responses_ai',lang)); return; }
-      openAnalyzeBridge(bridgeHost, mod, f, items);
-    };
+    if(!readOnly){
+      const bridgeHost = block.querySelector('[data-bridge]');
+      const btn = block.querySelector('[data-analyze]');
+      btn.onclick = ()=>{
+        if(!items.length){ toast(t('no_responses_ai',lang)); return; }
+        openAnalyzeBridge(bridgeHost, mod, f, items);
+      };
+    }
   });
 
-  if(mod.id==='ceo_discussion') body.appendChild(buildVoteAdminBlock(mod, docs));
-  if(mod.id==='charter') body.appendChild(buildCharterAdminBlock(mod));
+  if(mod.id==='ceo_discussion') body.appendChild(buildVoteAdminBlock(mod, docs, readOnly));
+  if(mod.id==='charter') body.appendChild(buildCharterAdminBlock(mod, readOnly));
 }
 
 function renderAnalysis(host, data){
@@ -863,32 +961,34 @@ function openAnalyzeBridge(host, mod, field, items){
   host.appendChild(box);
 }
 
-function buildVoteAdminBlock(mod, docs){
+function buildVoteAdminBlock(mod, docs, readOnly){
   const box = document.createElement('div'); box.className='card'; box.style.cssText='padding:14px;margin-top:6px;background:var(--surface-2);border-style:dashed;';
   const hasOptions = currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length;
-  box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('vote_results',lang)}</div><div data-genhost></div>`;
-  const genHost = box.querySelector('[data-genhost]');
-  const genBtn = document.createElement('button');
-  genBtn.className='btn btn-sm'; genBtn.textContent = t('generate_vote_list',lang);
-  genBtn.onclick = ()=>{
-    const items = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
-    if(!items.length){ toast(t('no_responses_ai',lang)); return; }
-    const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
-    const prompt = lang==='pl'
-      ? `Oto propozycje zmian od uczestników warsztatu:\n\n${list}\n\nWyodrębnij unikalne, konkretne pomysły (połącz duplikaty i bardzo podobne). Zwróć 5-10 pozycji. Odpowiedz WYŁĄCZNIE w formacie JSON: {"options":[string,...]} — każdy string to krótki, zrozumiały opis pomysłu po polsku.`
-      : `Here are improvement proposals from workshop participants:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates). Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
-    genHost.innerHTML='';
-    const box = buildAiBridgeBox(prompt, async (parsed)=>{
-      const opts = (parsed && parsed.options) || [];
-      const voteOptions = opts.map((label,i)=>({ id:'opt'+i, label }));
-      try{
-        await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
-        await sb.from('votes').delete().not('client_id','is',null);
-      }catch(e){ toast('Error: '+(e&&e.message||e)); }
-    });
-    genHost.innerHTML=''; genHost.appendChild(box);
-  };
-  genHost.appendChild(genBtn);
+  box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('vote_results',lang)}</div>${readOnly? '' : '<div data-genhost></div>'}`;
+  if(!readOnly){
+    const genHost = box.querySelector('[data-genhost]');
+    const genBtn = document.createElement('button');
+    genBtn.className='btn btn-sm'; genBtn.textContent = t('generate_vote_list',lang);
+    genBtn.onclick = ()=>{
+      const items = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
+      if(!items.length){ toast(t('no_responses_ai',lang)); return; }
+      const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
+      const prompt = lang==='pl'
+        ? `Oto propozycje zmian od uczestników warsztatu:\n\n${list}\n\nWyodrębnij unikalne, konkretne pomysły (połącz duplikaty i bardzo podobne). Zwróć 5-10 pozycji. Odpowiedz WYŁĄCZNIE w formacie JSON: {"options":[string,...]} — każdy string to krótki, zrozumiały opis pomysłu po polsku.`
+        : `Here are improvement proposals from workshop participants:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates). Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
+      genHost.innerHTML='';
+      const bridgeBox = buildAiBridgeBox(prompt, async (parsed)=>{
+        const opts = (parsed && parsed.options) || [];
+        const voteOptions = opts.map((label,i)=>({ id:'opt'+i, label }));
+        try{
+          await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
+          await sb.from('votes').delete().not('client_id','is',null);
+        }catch(e){ toast('Error: '+(e&&e.message||e)); }
+      });
+      genHost.innerHTML=''; genHost.appendChild(bridgeBox);
+    };
+    genHost.appendChild(genBtn);
+  }
 
   const tally = document.createElement('div'); tally.style.marginTop='12px'; tally.className='col';
   box.appendChild(tally);
@@ -915,8 +1015,21 @@ function buildVoteAdminBlock(mod, docs){
   return box;
 }
 
-function buildCharterAdminBlock(mod){
+function buildCharterAdminBlock(mod, readOnly){
   const box = document.createElement('div'); box.className='card'; box.style.cssText='padding:14px;margin-top:6px;background:var(--surface-2);border-style:dashed;';
+  if(readOnly){
+    box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('summary_charter',lang)}</div><div data-c class="col"></div>`;
+    const c = box.querySelector('[data-c]');
+    if((currentSession.charter||[]).length){
+      c.innerHTML = currentSession.charter.map(x=>`<div class="resp-item">📌 ${escapeHtml(x)}</div>`).join('');
+    } else {
+      subscribeAnalysis(mod.id+'__principle', data=>{
+        const themes = (data && data.themes) || [];
+        c.innerHTML = themes.length? themes.map(th=>`<div class="resp-item">${escapeHtml(th.theme||'')}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('candidate_themes_empty',lang)}</div>`;
+      });
+    }
+    return box;
+  }
   box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('select_charter',lang)}</div>`;
   const listHost = document.createElement('div'); listHost.className='col';
   box.appendChild(listHost);
@@ -994,7 +1107,7 @@ async function doReset(){
     await sb.from('responses').delete().not('id','is',null);
     await sb.from('votes').delete().not('client_id','is',null);
     await sb.from('analysis').delete().not('key','is',null);
-    await sb.from('session_state').update({ active_module:'welcome', vote_module_id:null, vote_options:[], charter:[], updated_at:new Date().toISOString() }).eq('id',1);
+    await sb.from('session_state').update({ active_module:'welcome', vote_module_id:null, vote_options:[], charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1);
     toast('OK');
   }catch(e){ toast('Error: '+(e&&e.message||e)); }
 }
