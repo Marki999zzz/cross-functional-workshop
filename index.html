@@ -156,6 +156,14 @@ const UI = {
   enter:{pl:'Wejdź',en:'Enter'},
   reset_btn:{pl:'Nowa sesja (reset)',en:'New session (reset)'},
   open_screen_btn:{pl:'📽️ Otwórz ekran',en:'📽️ Open screen'},
+  translate_to_en_btn:{pl:'🌐 Przetłumacz na angielski',en:'🌐 Translate to English'},
+  archive_btn:{pl:'📦 Zarchiwizuj i rozpocznij nową sesję',en:'📦 Archive and start a new session'},
+  archive_name_prompt:{pl:'Podaj nazwę tej sesji do archiwum:',en:'Name this session for the archive:'},
+  archive_done:{pl:'Zarchiwizowano. Nowa sesja gotowa.',en:'Archived. New session ready.'},
+  open_archive_btn:{pl:'🗂 Archiwum',en:'🗂 Archive'},
+  archive_list_title:{pl:'Archiwum warsztatów',en:'Workshop archive'},
+  archive_back_btn:{pl:'← Powrót do bieżącej sesji',en:'← Back to current session'},
+  archive_empty:{pl:'Brak zarchiwizowanych sesji.',en:'No archived sessions yet.'},
   reset_confirm:{pl:'To usunie wszystkie odpowiedzi, głosy i analizy z tej sesji. Kontynuować?',en:'This will delete all responses, votes and analysis from this session. Continue?'},
   sufler:{pl:'Sufler moderatora',en:"Moderator's script"},
   duration:{pl:'Czas',en:'Duration'},
@@ -343,6 +351,13 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&'
 function setLang(l){ lang=l; localStorage.setItem('wtool_lang', l); render(); }
 
 /* ===================== sb helpers ===================== */
+/* Every subscription created while rendering the current view is tracked
+   here and torn down right before the next full render, so switching
+   modules/views never leaves orphaned realtime channels running. */
+let activeChannels = [];
+function trackChannel(unsub){ activeChannels.push(unsub); return unsub; }
+function clearTrackedChannels(){ activeChannels.forEach(u=>{ try{ u(); }catch(e){} }); activeChannels = []; }
+
 function subscribeFiltered(table, col, val, cb){
   async function refetch(){
     let q = sb.from(table).select('*');
@@ -354,7 +369,7 @@ function subscribeFiltered(table, col, val, cb){
   const channel = sb.channel(table+'_'+(val||'all')+'_'+Math.random().toString(36).slice(2))
     .on('postgres_changes', { event:'*', schema:'public', table }, ()=> refetch())
     .subscribe();
-  return ()=> sb.removeChannel(channel);
+  return trackChannel(()=> sb.removeChannel(channel));
 }
 function subscribeSessionState(cb){
   async function refetch(){
@@ -365,7 +380,7 @@ function subscribeSessionState(cb){
   const channel = sb.channel('session_state_ch_'+Math.random().toString(36).slice(2))
     .on('postgres_changes', { event:'*', schema:'public', table:'session_state' }, ()=> refetch())
     .subscribe();
-  return ()=> sb.removeChannel(channel);
+  return ()=> sb.removeChannel(channel); // long-lived: set up once in boot(), never tracked/cleared per-render
 }
 function subscribeAnalysis(key, cb){
   async function refetch(){
@@ -376,7 +391,7 @@ function subscribeAnalysis(key, cb){
   const channel = sb.channel('analysis_'+key.replace(/[^a-z0-9]/gi,'_')+'_'+Math.random().toString(36).slice(2))
     .on('postgres_changes', { event:'*', schema:'public', table:'analysis', filter:`key=eq.${key}` }, ()=> refetch())
     .subscribe();
-  return ()=> sb.removeChannel(channel);
+  return trackChannel(()=> sb.removeChannel(channel));
 }
 
 /* ===================== Boot ===================== */
@@ -400,6 +415,7 @@ function boot(){
 
 /* ===================== Generic render dispatch ===================== */
 function render(){
+  clearTrackedChannels();
   if(MODE==='host') renderHost();
   else if(MODE==='screen') renderScreen();
   else renderParticipant();
@@ -465,7 +481,7 @@ function renderParticipant(){
       <div class="muted">${t('waiting',lang)}</div>
     </div>`;
   } else if(mod.type==='summary'){
-    card.appendChild(buildSummaryBlock());
+    card.appendChild(buildSummaryBlock(true));
   } else if(mod.id==='ceo_discussion' && currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length){
     card.appendChild(buildVoteForm(mod));
   } else {
@@ -608,6 +624,8 @@ function renderHostHeaderCount(){
   if(el) el.textContent = peerCount;
 }
 
+let archiveViewState = null; // null = live session; 'list' = archive list; otherwise an archived session's id
+
 function renderHost(){
   if(!hostUnlocked()){ renderHostGate(); return; }
   app.innerHTML='';
@@ -615,6 +633,7 @@ function renderHost(){
     app.innerHTML = `<div class="card" style="padding:20px;margin-top:20px;">${t('db_unavailable',lang)}</div>`;
     return;
   }
+  if(archiveViewState){ renderArchiveView(); return; }
   const mod = moduleById(currentSession.active_module) || MODULES[0];
   const shell = document.createElement('div');
   shell.innerHTML = `
@@ -627,6 +646,7 @@ function renderHost(){
         <span class="pill" style="background:var(--accent-soft);color:var(--accent-strong);">● <span id="peerCountVal">${peerCount}</span> ${t('online_now',lang)}</span>
         <div class="lang-switch"><button data-l="pl" class="${lang==='pl'?'active':''}">PL</button><button data-l="en" class="${lang==='en'?'active':''}">EN</button></div>
         <button class="btn btn-sm" id="openScreenBtn">${t('open_screen_btn',lang)}</button>
+        <button class="btn btn-sm" id="openArchiveBtn">${t('open_archive_btn',lang)}</button>
         <button class="btn btn-sm" id="resetBtn">${t('reset_btn',lang)}</button>
       </div>
     </div>
@@ -656,6 +676,93 @@ function renderHost(){
     const url = new URL(location.href); url.searchParams.set('mode','screen');
     window.open(url.toString(), '_blank');
   };
+  shell.querySelector('#openArchiveBtn').onclick = ()=>{ archiveViewState='list'; render(); };
+}
+
+/* ===================== Archive ===================== */
+function renderArchiveView(){
+  const shell = document.createElement('div');
+  shell.innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div class="disp" style="font-weight:800;font-size:20px;">${t('archive_list_title',lang)}</div>
+    <button class="btn btn-sm" id="archiveBackBtn">${t('archive_back_btn',lang)}</button>
+  </div><div id="archiveBody"></div>`;
+  app.appendChild(shell);
+  shell.querySelector('#archiveBackBtn').onclick = ()=>{ archiveViewState=null; render(); };
+  const bodyEl = shell.querySelector('#archiveBody');
+
+  if(archiveViewState==='list'){
+    (async ()=>{
+      const { data, error } = await sb.from('sessions').select('id,name,archived_at').order('archived_at',{ascending:false});
+      if(error || !data || !data.length){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
+      bodyEl.innerHTML='';
+      data.forEach(s=>{
+        const row = document.createElement('div');
+        row.className='card'; row.style.cssText='padding:14px 16px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;';
+        row.innerHTML = `<div><strong>${escapeHtml(s.name)}</strong><div class="soft" style="font-size:12px;">${new Date(s.archived_at).toLocaleString(lang==='pl'?'pl-PL':'en-US')}</div></div><span class="soft">›</span>`;
+        row.onclick = ()=>{ archiveViewState = s.id; render(); };
+        bodyEl.appendChild(row);
+      });
+    })();
+  } else {
+    (async ()=>{
+      const { data, error } = await sb.from('sessions').select('*').eq('id', archiveViewState).single();
+      if(error || !data){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
+      const card = document.createElement('div'); card.className='card'; card.style.padding='22px';
+      card.appendChild(renderArchivedSummary(data));
+      bodyEl.innerHTML=''; bodyEl.appendChild(card);
+    })();
+  }
+}
+
+function renderArchivedSummary(session){
+  const d = session.data || {};
+  const el = document.createElement('div');
+  el.innerHTML = `<div class="disp" style="font-size:18px;font-weight:800;margin-bottom:4px;">${escapeHtml(session.name)}</div>
+    <div class="soft" style="font-size:12px;margin-bottom:14px;">${new Date(session.archived_at).toLocaleString(lang==='pl'?'pl-PL':'en-US')}</div>`;
+  const sec = (titleKey, itemsHtml)=>{ el.insertAdjacentHTML('beforeend', `<div style="margin-top:14px;"><div style="font-weight:700;font-size:14px;margin-bottom:6px;">${t(titleKey,lang)}</div><div class="col">${itemsHtml || `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`}</div></div>`); };
+  sec('summary_checklist', (d.checklist||[]).map(x=>`<div class="resp-item">☑ ${escapeHtml(x)}</div>`).join(''));
+  sec('summary_ideas', (d.topIdeas||[]).map((o,i)=>`<div class="resp-item"><strong>#${i+1}</strong> ${escapeHtml(o.label||'')} <span class="soft">(${o.count||0})</span></div>`).join(''));
+  sec('summary_charter', (d.charter||[]).map(x=>`<div class="resp-item">📌 ${escapeHtml(x)}</div>`).join(''));
+  sec('summary_commit', (d.commitments||[]).map(c=>`<div class="resp-item">${c.start? '➡ '+escapeHtml(c.start)+'<br/>':''}${c.need? '🤝 '+escapeHtml(c.need):''}</div>`).join(''));
+  return el;
+}
+
+async function doArchiveAndReset(){
+  const defaultName = `${t('title',lang)} — ${new Date().toLocaleDateString(lang==='pl'?'pl-PL':'en-US')}`;
+  const name = prompt(t('archive_name_prompt',lang), defaultName);
+  if(name===null) return;
+  try{
+    const [{data:checklistDocs}, {data:voteDocs}, {data:closingDocs}, {data:translatedRow}] = await Promise.all([
+      sb.from('responses').select('values').eq('module_id','journey_sim'),
+      sb.from('votes').select('picks').eq('module_id','ceo_discussion'),
+      sb.from('responses').select('values').eq('module_id','closing'),
+      sb.from('analysis').select('themes').eq('key','summary__translated').maybeSingle(),
+    ]);
+    const translated = (translatedRow && translatedRow.themes && !Array.isArray(translatedRow.themes)) ? translatedRow.themes : null;
+    const rawChecklist = (checklistDocs||[]).map(d=>d.values && d.values.checklist_item).filter(Boolean);
+    const checklist = (translated && translated.checklist && translated.checklist.length) ? translated.checklist : rawChecklist;
+
+    const opts = currentSession.vote_options||[];
+    const counts={}; opts.forEach(o=>counts[o.id]=0);
+    (voteDocs||[]).forEach(d=>(d.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
+    const topIdeas = opts.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)).slice(0,3).map(o=>({label:o.label, count:counts[o.id]||0}));
+
+    const rawStarts = (closingDocs||[]).map(d=> (d.values&&d.values.start_tomorrow)||'');
+    const rawNeeds = (closingDocs||[]).map(d=> (d.values&&d.values.need_from_others)||'');
+    const starts = (translated && translated.starts && translated.starts.length===rawStarts.length) ? translated.starts : rawStarts;
+    const needs = (translated && translated.needs && translated.needs.length===rawNeeds.length) ? translated.needs : rawNeeds;
+    const commitments = rawStarts.map((_,i)=>({start:starts[i], need:needs[i]})).filter(c=>c.start||c.need);
+
+    const data = { checklist, topIdeas, charter: currentSession.charter||[], commitments };
+    const { error: insErr } = await sb.from('sessions').insert({ name, data });
+    if(insErr) throw insErr;
+
+    await sb.from('responses').delete().not('id','is',null);
+    await sb.from('votes').delete().not('client_id','is',null);
+    await sb.from('analysis').delete().not('key','is',null);
+    await sb.from('session_state').update({ active_module:'lobby', vote_module_id:null, vote_options:[], charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1);
+    toast(t('archive_done',lang));
+  }catch(e){ toast('Error: '+(e&&e.message||e)); }
 }
 
 function renderScreen(){
@@ -714,13 +821,13 @@ function renderScreen(){
     </div>`;
   } else if(mod.type==='summary'){
     const card = document.createElement('div'); card.className='card'; card.style.padding='26px';
-    card.appendChild(buildSummaryBlock());
+    card.appendChild(buildSummaryBlock(true));
     body.appendChild(card);
   } else {
     const card = document.createElement('div'); card.className='card'; card.style.padding='24px';
     card.innerHTML = `<div class="disp" style="font-size:22px;font-weight:800;margin-bottom:14px;">${t('results_live',lang)}</div><div id="screenResultsBody"></div>`;
     body.appendChild(card);
-    subscribeFiltered('responses','module_id',mod.id, docs=> renderFieldsResults(card.querySelector('#screenResultsBody'), mod, docs, true));
+    renderFieldsResults(card.querySelector('#screenResultsBody'), mod, true);
   }
 }
 
@@ -870,55 +977,80 @@ function buildResultsPanel(mod){
     return panel;
   }
   if(mod.type==='summary'){
-    body.appendChild(buildSummaryBlock());
+    body.appendChild(buildSummaryBlock(false));
+    const archBtn = document.createElement('button');
+    archBtn.className='btn btn-primary btn-sm'; archBtn.style.marginTop='16px';
+    archBtn.textContent = t('archive_btn',lang);
+    archBtn.onclick = doArchiveAndReset;
+    body.appendChild(archBtn);
     return panel;
   }
 
-  subscribeFiltered('responses','module_id',mod.id, docs=> renderFieldsResults(body, mod, docs));
+  renderFieldsResults(body, mod, false);
   return panel;
 }
 
-function renderFieldsResults(body, mod, docs, readOnly){
+/* Builds the field shells and subscribes to each field's analysis exactly
+   ONCE; a single 'responses' subscription then only updates the raw list
+   text/counters on every change, instead of tearing down and re-creating
+   the analysis subscriptions (and their realtime channels) on every event. */
+function renderFieldsResults(body, mod, readOnly){
   body.innerHTML='';
+  const fieldRefs = {};
   mod.fields.forEach(f=>{
-    const items = docs.filter(d=> d.values && d.values[f.id]).map(d=>({ text:d.values[f.id], dept:d.dept }));
     const block = document.createElement('div');
     block.style.marginBottom='18px';
     block.innerHTML = `
       <div class="row" style="justify-content:space-between;align-items:center;">
         <div style="font-weight:700;font-size:13.5px;">${escapeHtml(f.label[lang])}</div>
-        <span class="pill" style="background:var(--surface-2);color:var(--text-muted);">${items.length} ${t('responses_n',lang)}</span>
+        <span class="pill" data-count style="background:var(--surface-2);color:var(--text-muted);">0 ${t('responses_n',lang)}</span>
       </div>
       <div class="scroll-list" style="margin-top:8px;" data-raw></div>
       ${readOnly? '' : `<div class="row" style="margin-top:8px;">
-        <button class="btn btn-sm" data-analyze="${f.id}" ${!items.length?'disabled':''}>${t('analyze_btn',lang)}</button>
+        <button class="btn btn-sm" data-analyze disabled>${t('analyze_btn',lang)}</button>
       </div>`}
       <div data-analysis style="margin-top:10px;"></div>
       ${readOnly? '' : '<div data-bridge></div>'}
     `;
-    const rawList = block.querySelector('[data-raw]');
-    if(!items.length){ rawList.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`; }
-    else items.slice().reverse().forEach(it=>{
-      const el = document.createElement('div'); el.className='resp-item';
-      el.innerHTML = (it.dept? `<span class="dept-chip dept-${it.dept}" style="margin-right:6px;">${t('dept_'+it.dept,lang)}</span>`:'') + escapeHtml(it.text);
-      rawList.appendChild(el);
-    });
     body.appendChild(block);
+    const ref = {
+      raw: block.querySelector('[data-raw]'),
+      count: block.querySelector('[data-count]'),
+      btn: readOnly? null : block.querySelector('[data-analyze]'),
+      bridge: readOnly? null : block.querySelector('[data-bridge]'),
+      items: [],
+    };
+    fieldRefs[f.id] = ref;
+    ref.raw.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`;
 
     const analysisHost = block.querySelector('[data-analysis]');
     subscribeAnalysis(mod.id+'__'+f.id, data=>{ if(data) renderAnalysis(analysisHost, data); });
-
-    if(!readOnly){
-      const bridgeHost = block.querySelector('[data-bridge]');
-      const btn = block.querySelector('[data-analyze]');
-      btn.onclick = ()=>{
-        if(!items.length){ toast(t('no_responses_ai',lang)); return; }
-        openAnalyzeBridge(bridgeHost, mod, f, items);
-      };
-    }
   });
 
-  if(mod.id==='ceo_discussion') body.appendChild(buildVoteAdminBlock(mod, docs, readOnly));
+  subscribeFiltered('responses','module_id',mod.id, docs=>{
+    mod.fields.forEach(f=>{
+      const ref = fieldRefs[f.id];
+      const items = docs.filter(d=> d.values && d.values[f.id]).map(d=>({ text:d.values[f.id], dept:d.dept }));
+      ref.items = items;
+      ref.count.textContent = `${items.length} ${t('responses_n',lang)}`;
+      ref.raw.innerHTML='';
+      if(!items.length){ ref.raw.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`; }
+      else items.slice().reverse().forEach(it=>{
+        const elx = document.createElement('div'); elx.className='resp-item';
+        elx.innerHTML = (it.dept? `<span class="dept-chip dept-${it.dept}" style="margin-right:6px;">${t('dept_'+it.dept,lang)}</span>`:'') + escapeHtml(it.text);
+        ref.raw.appendChild(elx);
+      });
+      if(ref.btn){
+        ref.btn.disabled = !items.length;
+        ref.btn.onclick = ()=>{
+          if(!ref.items.length){ toast(t('no_responses_ai',lang)); return; }
+          openAnalyzeBridge(ref.bridge, mod, f, ref.items);
+        };
+      }
+    });
+  });
+
+  if(mod.id==='ceo_discussion') body.appendChild(buildVoteAdminBlock(mod, readOnly));
   if(mod.id==='charter') body.appendChild(buildCharterAdminBlock(mod, readOnly));
 }
 
@@ -995,16 +1127,20 @@ function openAnalyzeBridge(host, mod, field, items){
   host.appendChild(box);
 }
 
-function buildVoteAdminBlock(mod, docs, readOnly){
+function buildVoteAdminBlock(mod, readOnly){
   const box = document.createElement('div'); box.className='card'; box.style.cssText='padding:14px;margin-top:6px;background:var(--surface-2);border-style:dashed;';
   const hasOptions = currentSession.vote_module_id===mod.id && (currentSession.vote_options||[]).length;
   box.innerHTML = `<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">${t('vote_results',lang)}</div>${readOnly? '' : '<div data-genhost></div>'}`;
+  let latestItems = [];
+  subscribeFiltered('responses','module_id',mod.id, docs=>{
+    latestItems = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
+  });
   if(!readOnly){
     const genHost = box.querySelector('[data-genhost]');
     const genBtn = document.createElement('button');
     genBtn.className='btn btn-sm'; genBtn.textContent = t('generate_vote_list',lang);
     genBtn.onclick = ()=>{
-      const items = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
+      const items = latestItems;
       if(!items.length){ toast(t('no_responses_ai',lang)); return; }
       const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
       const prompt = `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
@@ -1096,7 +1232,26 @@ function buildCharterAdminBlock(mod, readOnly){
 }
 
 /* ===================== Summary block (shared by host+participant) ===================== */
-function buildSummaryBlock(){
+/* All raw participant text in the summary (checklist + commitments) can be
+   a mix of Polish/English since it's typed verbatim by participants. This
+   builds ONE prompt that translates everything to English in one pass;
+   the moderator triggers it once via the button rendered below. */
+function openTranslateSummaryBridge(host, checklistItems, startItems, needItems){
+  const fmtList = (arr)=> arr.map((x,i)=> x? (i+1)+'. '+x.replace(/\n/g,' ') : (i+1)+'. (empty)').join('\n') || '(none)';
+  const prompt = `Translate the following workshop outputs into English (if a line is already in English, keep it as is). Preserve meaning and order exactly; keep the same number of items in each list.\n\n`
+    + `CHECKLIST ITEMS:\n${fmtList(checklistItems)}\n\n`
+    + `COMMITMENTS - "starting tomorrow, I will...":\n${fmtList(startItems)}\n\n`
+    + `COMMITMENTS - "I need from other departments...":\n${fmtList(needItems)}\n\n`
+    + `Reply ONLY with JSON: {"checklist":[string,...] (${checklistItems.length} items), "starts":[string,...] (${startItems.length} items, "" for entries marked "(empty)"), "needs":[string,...] (${needItems.length} items, "" for entries marked "(empty)")}, each array in the same order as given.`;
+  const box = buildAiBridgeBox(prompt, async (parsed)=>{
+    const themes = { checklist:(parsed&&parsed.checklist)||[], starts:(parsed&&parsed.starts)||[], needs:(parsed&&parsed.needs)||[] };
+    try{ await sb.from('analysis').upsert({ key:'summary__translated', themes, updated_at:new Date().toISOString() }); }
+    catch(e){ toast('Error: '+(e&&e.message||e)); }
+  });
+  host.appendChild(box);
+}
+
+function buildSummaryBlock(readOnly){
   const el = document.createElement('div');
   el.innerHTML = `<div class="disp" style="font-size:19px;font-weight:800;margin-bottom:12px;">${t('summary_title',lang)}</div><div id="sumBody" class="col"></div>`;
   const body = el.querySelector('#sumBody');
@@ -1107,11 +1262,43 @@ function buildSummaryBlock(){
   const ideasC = sec('summary_ideas');
   const charterC = sec('summary_charter');
   const commitC = sec('summary_commit');
+  const translateWrap = document.createElement('div'); translateWrap.style.marginTop='4px'; body.appendChild(translateWrap);
+
+  let checklistItems = [], startItems = [], needItems = [], translated = null;
+
+  function renderChecklist(){
+    const source = (translated && translated.checklist && translated.checklist.length) ? translated.checklist : checklistItems;
+    checklistC.innerHTML = source.length? source.map(x=>`<div class="resp-item">☑ ${escapeHtml(x)}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+  }
+  function renderCommit(){
+    const starts = (translated && translated.starts && translated.starts.length===startItems.length) ? translated.starts : startItems;
+    const needs = (translated && translated.needs && translated.needs.length===needItems.length) ? translated.needs : needItems;
+    const n = Math.max(starts.length, needs.length);
+    if(!n){ commitC.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`; return; }
+    let html='';
+    for(let i=0;i<n;i++){
+      if(!starts[i] && !needs[i]) continue;
+      html += `<div class="resp-item">${starts[i]? '➡ '+escapeHtml(starts[i])+'<br/>':''}${needs[i]? '🤝 '+escapeHtml(needs[i]):''}</div>`;
+    }
+    commitC.innerHTML = html || `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+  }
+  function renderTranslateBtn(){
+    translateWrap.innerHTML='';
+    if(readOnly || translated) return;
+    if(!checklistItems.length && !startItems.filter(Boolean).length && !needItems.filter(Boolean).length) return;
+    const btn = document.createElement('button');
+    btn.className='btn btn-sm'; btn.textContent = t('translate_to_en_btn',lang);
+    btn.onclick = ()=>{
+      translateWrap.innerHTML='';
+      openTranslateSummaryBridge(translateWrap, checklistItems, startItems, needItems);
+    };
+    translateWrap.appendChild(btn);
+  }
 
   if(sb){
     subscribeFiltered('responses','module_id','journey_sim', docs=>{
-      const items = docs.filter(d=>d.values&&d.values.checklist_item).map(d=>d.values.checklist_item);
-      checklistC.innerHTML = items.length? items.map(x=>`<div class="resp-item">☑ ${escapeHtml(x)}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+      checklistItems = docs.filter(d=>d.values&&d.values.checklist_item).map(d=>d.values.checklist_item);
+      renderChecklist(); renderTranslateBtn();
     });
 
     subscribeFiltered('votes','module_id','ceo_discussion', voteDocs=>{
@@ -1126,7 +1313,14 @@ function buildSummaryBlock(){
     charterC.innerHTML = (currentSession.charter||[]).length ? currentSession.charter.map(c=>`<div class="resp-item">📌 ${escapeHtml(c)}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
 
     subscribeFiltered('responses','module_id','closing', docs=>{
-      commitC.innerHTML = docs.length ? docs.map(d=>`<div class="resp-item">${d.values.start_tomorrow? '➡ '+escapeHtml(d.values.start_tomorrow)+'<br/>':''}${d.values.need_from_others? '🤝 '+escapeHtml(d.values.need_from_others):''}</div>`).join('') : `<div class="muted" style="font-size:12.5px;">${t('summary_empty',lang)}</div>`;
+      startItems = docs.map(d=> (d.values&&d.values.start_tomorrow)||'');
+      needItems = docs.map(d=> (d.values&&d.values.need_from_others)||'');
+      renderCommit(); renderTranslateBtn();
+    });
+
+    subscribeAnalysis('summary__translated', data=>{
+      translated = (data && data.themes && !Array.isArray(data.themes)) ? data.themes : null;
+      renderChecklist(); renderCommit(); renderTranslateBtn();
     });
   }
   return el;
