@@ -644,6 +644,7 @@ function renderHostHeaderCount(){
 }
 
 let archiveViewState = null; // null = live session; 'list' = archive list; otherwise an archived session's id
+let lastHostModuleId = null; // tracks module shown to the host, to auto-generate the PDF once per arrival at 'summary'
 
 function renderHost(){
   if(!hostUnlocked()){ renderHostGate(); return; }
@@ -688,6 +689,11 @@ function renderHost(){
   const grid = shell.querySelector('#hostGrid');
   grid.appendChild(buildSuflerPanel(mod));
   grid.appendChild(buildResultsPanel(mod));
+
+  if(mod.id==='summary' && lastHostModuleId!=='summary'){
+    setTimeout(generateFullReportPdf, 400);
+  }
+  lastHostModuleId = mod.id;
 
   shell.querySelectorAll('[data-l]').forEach(b=> b.onclick = ()=> setLang(b.dataset.l));
   shell.querySelector('#resetBtn').onclick = doReset;
