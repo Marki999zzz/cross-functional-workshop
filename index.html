@@ -125,6 +125,8 @@ body.screen-mode .bar-track{height:30px;}
   #printReport .report-examples{font-size:10.5px; color:#333; font-style:italic; margin-top:2px;}
   #printReport .report-meta{font-size:11px; color:#333; margin-bottom:10px;}
   #printReport .report-conclusions-label{font-weight:700; font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.03em;}
+  #printReport .report-comment{font-size:11px; color:#000; margin-top:6px; padding:4px 8px; border-left:2px solid #000; background:#f2f2f2;}
+  #printReport .report-comment-label{font-weight:700; text-transform:uppercase; font-size:9.5px; letter-spacing:.03em;}
 }
 </style>
 </head>
@@ -199,6 +201,14 @@ const UI = {
   bridge_save:{pl:'Zapisz wynik',en:'Save result'},
   bridge_error:{pl:'Nie udało się odczytać JSON — sprawdź, czy wklejono tylko odpowiedź modelu.',en:"Couldn't parse JSON — make sure you pasted only the model's reply."},
   no_responses_ai:{pl:'Brak odpowiedzi do analizy.',en:'No responses to analyze yet.'},
+  no_ai_themes_yet:{pl:'Jeszcze brak wniosków AI dla tego pytania.',en:'No AI conclusions for this question yet.'},
+  edit_themes_btn:{pl:'✏️ Edytuj wnioski',en:'✏️ Edit conclusions'},
+  save_btn:{pl:'Zapisz',en:'Save'},
+  cancel_btn:{pl:'Anuluj',en:'Cancel'},
+  saved_toast:{pl:'Zapisano.',en:'Saved.'},
+  mod_comment_label:{pl:'🗨️ Komentarz moderatora',en:'🗨️ Moderator comment'},
+  mod_comment_placeholder:{pl:'Dodaj własny komentarz lub kontekst do tych wniosków (widoczny w PDF)...',en:'Add your own comment or context to these conclusions (shown in the PDF)...'},
+  save_comment_btn:{pl:'Zapisz komentarz',en:'Save comment'},
   db_unavailable:{pl:'Uzupełnij SUPABASE_URL i SUPABASE_ANON_KEY na początku pliku index.html, aby uruchomić narzędzie.',en:'Fill in SUPABASE_URL and SUPABASE_ANON_KEY at the top of index.html to run this tool.'},
   priority_high:{pl:'Wysoki priorytet',en:'High priority'},
   priority_medium:{pl:'Średni priorytet',en:'Medium priority'},
@@ -753,14 +763,23 @@ function renderArchivedSummary(session){
 }
 
 /* ===================== Full PDF report (all raw answers + AI conclusions) ===================== */
-function renderThemesHtml(themes){
-  if(!themes || !Array.isArray(themes) || !themes.length) return '';
-  return `<div class="report-conclusions-label">${escapeHtml(t('report_conclusions_label',lang))}</div><div class="report-themes">` + themes.map(th=>{
-    const pri = ['high','medium','low'].includes(th.priority) ? th.priority : null;
-    return `<div class="report-theme"><strong>${escapeHtml(th.theme||'')}</strong>${pri? ` <span class="report-pri">${escapeHtml(t('priority_'+pri,lang))}</span>` : ''}${th.count? ' · '+th.count : ''}
-      ${(th.examples||[]).length? `<div class="report-examples">${th.examples.map(e=>'“'+escapeHtml(e)+'”').join(' · ')}</div>` : ''}
-    </div>`;
-  }).join('') + `</div>`;
+function renderThemesHtml(row){
+  const themes = row && Array.isArray(row.themes) ? row.themes : [];
+  const comment = row && row.comment ? row.comment.trim() : '';
+  if(!themes.length && !comment) return '';
+  let html = '';
+  if(themes.length){
+    html += `<div class="report-conclusions-label">${escapeHtml(t('report_conclusions_label',lang))}</div><div class="report-themes">` + themes.map(th=>{
+      const pri = ['high','medium','low'].includes(th.priority) ? th.priority : null;
+      return `<div class="report-theme"><strong>${escapeHtml(th.theme||'')}</strong>${pri? ` <span class="report-pri">${escapeHtml(t('priority_'+pri,lang))}</span>` : ''}${th.count? ' · '+th.count : ''}
+        ${(th.examples||[]).length? `<div class="report-examples">${th.examples.map(e=>'“'+escapeHtml(e)+'”').join(' · ')}</div>` : ''}
+      </div>`;
+    }).join('') + `</div>`;
+  }
+  if(comment){
+    html += `<div class="report-comment"><span class="report-comment-label">${escapeHtml(t('mod_comment_label',lang))}:</span> ${escapeHtml(comment)}</div>`;
+  }
+  return html;
 }
 
 async function buildFullReportHtml(){
@@ -769,7 +788,7 @@ async function buildFullReportHtml(){
     sb.from('analysis').select('*'),
   ]);
   const responses = allResponses||[]; const analysisRows = allAnalysis||[];
-  const findAnalysis = (key)=>{ const row = analysisRows.find(a=>a.key===key); return row ? row.themes : null; };
+  const findAnalysis = (key)=> analysisRows.find(a=>a.key===key) || null;
   let votes = [];
   if(currentSession.vote_module_id){
     const { data } = await sb.from('votes').select('*').eq('module_id', currentSession.vote_module_id);
@@ -1152,7 +1171,8 @@ function renderFieldsResults(body, mod, readOnly){
     ref.raw.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_responses',lang)}</div>`;
 
     const analysisHost = block.querySelector('[data-analysis]');
-    subscribeAnalysis(mod.id+'__'+f.id, data=>{ if(data) renderAnalysis(analysisHost, data); });
+    const analysisKey = mod.id+'__'+f.id;
+    subscribeAnalysis(analysisKey, data=> renderAnalysis(analysisHost, data, analysisKey, readOnly));
   });
 
   subscribeFiltered('responses','module_id',mod.id, docs=>{
@@ -1182,26 +1202,84 @@ function renderFieldsResults(body, mod, readOnly){
   if(mod.id==='charter') body.appendChild(buildCharterAdminBlock(mod, readOnly));
 }
 
-function renderAnalysis(host, data){
-  host.innerHTML = '';
+function renderAnalysis(host, data, key, readOnly){
+  data = data || {};
   const themes = data.themes||[];
-  if(!themes.length) return;
+  host.innerHTML = '';
+  if(readOnly && !themes.length) return;
+
   const wrap = document.createElement('div'); wrap.className='col';
-  themes.forEach(th=>{
-    const pri = ['high','medium','low'].includes(th.priority)? th.priority:'medium';
-    const card = document.createElement('div');
-    card.className='theme-card';
-    card.style.borderLeftColor = `var(--pri-${pri})`;
-    card.innerHTML = `
-      <div class="row" style="justify-content:space-between;align-items:center;">
-        <strong style="font-size:13.5px;">${escapeHtml(th.theme||'')}</strong>
-        <span class="pill pri-${pri}">${t('priority_'+pri,lang)} · ${th.count||0}</span>
-      </div>
-      ${(th.examples||[]).length? `<div class="soft" style="margin-top:6px;font-size:12px;">${th.examples.map(e=>'"'+escapeHtml(e)+'"').join(' · ')}</div>`:''}
-    `;
-    wrap.appendChild(card);
-  });
+  if(themes.length){
+    themes.forEach(th=>{
+      const pri = ['high','medium','low'].includes(th.priority)? th.priority:'medium';
+      const card = document.createElement('div');
+      card.className='theme-card';
+      card.style.borderLeftColor = `var(--pri-${pri})`;
+      card.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <strong style="font-size:13.5px;">${escapeHtml(th.theme||'')}</strong>
+          <span class="pill pri-${pri}">${t('priority_'+pri,lang)} · ${th.count||0}</span>
+        </div>
+        ${(th.examples||[]).length? `<div class="soft" style="margin-top:6px;font-size:12px;">${th.examples.map(e=>'"'+escapeHtml(e)+'"').join(' · ')}</div>`:''}
+      `;
+      wrap.appendChild(card);
+    });
+  } else if(!readOnly){
+    wrap.innerHTML = `<div class="muted" style="font-size:12.5px;">${t('no_ai_themes_yet',lang)}</div>`;
+  }
   host.appendChild(wrap);
+  if(readOnly || !key) return;
+
+  const editWrap = document.createElement('div'); editWrap.style.marginTop='8px';
+  const editBtn = document.createElement('button');
+  editBtn.className='btn btn-sm btn-ghost'; editBtn.textContent = t('edit_themes_btn',lang);
+  editWrap.appendChild(editBtn);
+  const editBox = document.createElement('div'); editBox.hidden = true; editBox.style.marginTop='6px';
+  editBox.innerHTML = `
+    <textarea data-themes-json style="width:100%;min-height:110px;font-family:monospace;font-size:11.5px;">${escapeHtml(JSON.stringify(themes, null, 2))}</textarea>
+    <div class="row" style="margin-top:6px;">
+      <button class="btn btn-sm btn-primary" data-save-themes>${t('save_btn',lang)}</button>
+      <button class="btn btn-sm btn-ghost" data-cancel-themes>${t('cancel_btn',lang)}</button>
+    </div>
+    <div data-themes-err class="muted" style="color:var(--pri-high);font-size:12px;margin-top:4px;" hidden>${t('bridge_error',lang)}</div>
+  `;
+  editWrap.appendChild(editBox);
+  host.appendChild(editWrap);
+  editBtn.onclick = ()=>{ editBox.hidden = !editBox.hidden; };
+  editBox.querySelector('[data-cancel-themes]').onclick = ()=>{ editBox.hidden = true; };
+  editBox.querySelector('[data-save-themes]').onclick = async ()=>{
+    const raw = editBox.querySelector('[data-themes-json]').value;
+    const errEl = editBox.querySelector('[data-themes-err]');
+    let parsed;
+    try{ parsed = JSON.parse(raw); }
+    catch(e){ errEl.hidden = false; return; }
+    errEl.hidden = true;
+    const newThemes = Array.isArray(parsed) ? parsed : (parsed.themes||[]);
+    try{
+      const { error } = await sb.from('analysis').upsert({ key, themes:newThemes, updated_at:new Date().toISOString() });
+      if(error) throw error;
+      editBox.hidden = true;
+      toast(t('saved_toast',lang));
+    }catch(e){ toast('Error: '+(e&&e.message||e)); }
+  };
+
+  const commentWrap = document.createElement('div'); commentWrap.style.marginTop='10px';
+  commentWrap.innerHTML = `
+    <div style="font-size:11.5px;font-weight:700;color:var(--text-muted);margin-bottom:4px;">${t('mod_comment_label',lang)}</div>
+    <textarea data-comment placeholder="${escapeHtml(t('mod_comment_placeholder',lang))}" style="width:100%;min-height:50px;font-size:12.5px;">${escapeHtml(data.comment||'')}</textarea>
+    <div class="row" style="margin-top:4px;">
+      <button class="btn btn-sm" data-save-comment>${t('save_comment_btn',lang)}</button>
+    </div>
+  `;
+  host.appendChild(commentWrap);
+  commentWrap.querySelector('[data-save-comment]').onclick = async ()=>{
+    const val = commentWrap.querySelector('[data-comment]').value.trim();
+    try{
+      const { error } = await sb.from('analysis').upsert({ key, comment: val, updated_at:new Date().toISOString() });
+      if(error) throw error;
+      toast(t('saved_toast',lang));
+    }catch(e){ toast('Error: '+(e&&e.message||e)); }
+  };
 }
 
 /* ---- Manual AI bridge (copy prompt to Claude chat, paste JSON back) ---- */
