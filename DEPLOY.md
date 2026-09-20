@@ -38,6 +38,13 @@
 - Stan "wysłano odpowiedź dla modułu X" jest zapamiętywany lokalnie w przeglądarce uczestnika (localStorage), więc jeśli moderator wróci do wcześniejszego, już wypełnionego modułu, uczestnik nadal widzi potwierdzenie, a nie pusty formularz.
 - Nie dotyczy głosowania (moduł 5) — tam uczestnik może zmienić swój głos, więc formularz głosowania pozostaje edytowalny jak dotychczas.
 
+**Aktualizacja (2026-09-20, automatyczna analiza AI przez Groq — bez czatu, bez konta Claude):**
+- Dodano Supabase Edge Function [`groq-analyze`](supabase/functions/groq-analyze/index.ts), wdrożoną pod `https://zylxxtekqhulgbtmjnje.supabase.co/functions/v1/groq-analyze`. Trzyma klucz Groq (`GROQ_API_KEY`, ustawiony jako sekret Edge Function — osobny klucz niż w projekcie „baza wiedzy", żeby nie dzielić limitów) po stronie serwera; nigdy nie trafia do przeglądarki/GitHub Pages.
+- Przyciski **„✨ Analizuj i pogrupuj (AI)"**, **„Wygeneruj listę do głosowania (AI)"** oraz **„🌐 Przetłumacz na angielski"** teraz najpierw same wołają tę funkcję (model Groq `openai/gpt-oss-120b`, structured output / `json_schema`) i od razu zapisują wynik — bez kopiowania czegokolwiek do zewnętrznego czatu. Dotyczy to też modułu 6 (kandydujące zasady karty współpracy), bo korzysta z tego samego mechanizmu co inne pytania.
+- Jeśli wywołanie Groq się nie powiedzie (np. limit, brak sieci, funkcja niedostępna), narzędzie automatycznie pokazuje dotychczasowy ręczny most kopiuj-wklej jako zapasową opcję — nic nie blokuje warsztatu.
+- Dzięki temu **moderator nie potrzebuje już żadnego dostępu do AI (ani do Claude, ani do innego czatu)**, żeby przeprowadzić cały warsztat od początku do końca, włącznie z eksportem PDF.
+- Test end-to-end (curl bezpośrednio na Edge Function) potwierdzony: zwraca poprawny, zgodny ze schematem JSON.
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).

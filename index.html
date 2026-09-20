@@ -142,6 +142,7 @@ body.screen-mode .bar-track{height:30px;}
 const SUPABASE_URL = "https://zylxxtekqhulgbtmjnje.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_4GPAoe8lRdk3FQf373IIag_L5ODTTQy";
 const HOST_PIN = "1234"; // PIN dostępu do panelu moderatora (?mode=host) — zmień na własny
+const GROQ_FUNCTION_URL = SUPABASE_URL + "/functions/v1/groq-analyze";
 /* ===================================================================== */
 
 const sb = (window.supabase && SUPABASE_URL.startsWith('http'))
@@ -204,6 +205,9 @@ const UI = {
   bridge_error:{pl:'Nie udało się odczytać JSON — sprawdź, czy wklejono tylko odpowiedź modelu.',en:"Couldn't parse JSON — make sure you pasted only the model's reply."},
   no_responses_ai:{pl:'Brak odpowiedzi do analizy.',en:'No responses to analyze yet.'},
   no_ai_themes_yet:{pl:'Jeszcze brak wniosków AI dla tego pytania.',en:'No AI conclusions for this question yet.'},
+  analyzing_ai:{pl:'⏳ Analizuję (AI)...',en:'⏳ Analyzing (AI)...'},
+  ai_auto_saved:{pl:'Gotowe — wnioski AI zapisane automatycznie.',en:'Done — AI conclusions saved automatically.'},
+  ai_auto_failed:{pl:'Nie udało się połączyć z AI automatycznie — wklej wynik ręcznie poniżej.',en:'Could not reach AI automatically — paste the result manually below.'},
   edit_themes_btn:{pl:'✏️ Edytuj wnioski',en:'✏️ Edit conclusions'},
   save_btn:{pl:'Zapisz',en:'Save'},
   cancel_btn:{pl:'Anuluj',en:'Cancel'},
@@ -423,6 +427,70 @@ function subscribeAnalysis(key, cb){
     .on('postgres_changes', { event:'*', schema:'public', table:'analysis', filter:`key=eq.${key}` }, ()=> refetch())
     .subscribe();
   return trackChannel(()=> sb.removeChannel(channel));
+}
+
+/* ===================== Groq auto-analysis (server-side via Supabase Edge Function) =====================
+   The Edge Function holds the Groq API key server-side and simply forwards
+   {prompt, schemaName, schema} to Groq's structured-output chat completions,
+   returning the parsed JSON. If it's unreachable/misconfigured/rate-limited,
+   callers fall back to the manual copy-paste-to-a-chat-AI bridge below. */
+const THEME_SCHEMA = {
+  type:'object',
+  properties:{ themes:{ type:'array', items:{
+    type:'object',
+    properties:{
+      theme:{type:'string'}, count:{type:'integer'},
+      priority:{type:'string', enum:['high','medium','low']},
+      examples:{type:'array', items:{type:'string'}},
+    },
+    required:['theme','count','priority','examples'], additionalProperties:false,
+  }}},
+  required:['themes'], additionalProperties:false,
+};
+const VOTE_OPTIONS_SCHEMA = {
+  type:'object',
+  properties:{ options:{ type:'array', items:{type:'string'} } },
+  required:['options'], additionalProperties:false,
+};
+const SUMMARY_TRANSLATE_SCHEMA = {
+  type:'object',
+  properties:{
+    checklist:{ type:'array', items:{type:'string'} },
+    starts:{ type:'array', items:{type:'string'} },
+    needs:{ type:'array', items:{type:'string'} },
+  },
+  required:['checklist','starts','needs'], additionalProperties:false,
+};
+
+async function callGroqAnalyze(prompt, schemaName, schema){
+  const res = await fetch(GROQ_FUNCTION_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+    body: JSON.stringify({ prompt, schemaName, schema }),
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error((data && data.error) || ('HTTP '+res.status));
+  return data;
+}
+
+/* Tries the Groq auto-path on the given button; returns true on success (and
+   already called onSave), false if the caller should fall back to the manual
+   bridge. Never throws. */
+async function tryAutoAnalyze(btn, prompt, schemaName, schema, onSave){
+  const origText = btn ? btn.textContent : null;
+  if(btn){ btn.disabled = true; btn.textContent = t('analyzing_ai',lang); }
+  try{
+    const data = await callGroqAnalyze(prompt, schemaName, schema);
+    await onSave(data);
+    toast(t('ai_auto_saved',lang));
+    return true;
+  }catch(e){
+    console.warn('Groq auto-analyze failed, falling back to manual bridge:', e);
+    toast(t('ai_auto_failed',lang));
+    return false;
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent = origText; }
+  }
 }
 
 /* ===================== Boot ===================== */
@@ -1209,9 +1277,15 @@ function renderFieldsResults(body, mod, readOnly){
       });
       if(ref.btn){
         ref.btn.disabled = !items.length;
-        ref.btn.onclick = ()=>{
+        ref.btn.onclick = async ()=>{
           if(!ref.items.length){ toast(t('no_responses_ai',lang)); return; }
-          openAnalyzeBridge(ref.bridge, mod, f, ref.items);
+          const list = ref.items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
+          const prompt = `Here are raw workshop participant answers, possibly written in Polish or English, to the question: "${f.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. Respond entirely in English regardless of the original language of the answers — translate any Polish text into English. For each category give: a short English theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes translated into English.`;
+          const ok = await tryAutoAnalyze(ref.btn, prompt, 'workshop_themes', THEME_SCHEMA, async (data)=>{
+            const { error } = await sb.from('analysis').upsert({ key: mod.id+'__'+f.id, themes:(data&&data.themes)||[], updated_at:new Date().toISOString() });
+            if(error) throw error;
+          });
+          if(!ok) openAnalyzeBridge(ref.bridge, mod, f, ref.items);
         };
       }
     });
@@ -1364,21 +1438,29 @@ function buildVoteAdminBlock(mod, readOnly){
     const genHost = box.querySelector('[data-genhost]');
     const genBtn = document.createElement('button');
     genBtn.className='btn btn-sm'; genBtn.textContent = t('generate_vote_list',lang);
-    genBtn.onclick = ()=>{
+    genBtn.onclick = async ()=>{
       const items = latestItems;
       if(!items.length){ toast(t('no_responses_ai',lang)); return; }
       const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
-      const prompt = `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
-      genHost.innerHTML='';
-      const bridgeBox = buildAiBridgeBox(prompt, async (parsed)=>{
-        const opts = (parsed && parsed.options) || [];
+      const prompt = `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items — each a short, clear idea description in English.`;
+      const saveVoteOptions = async (opts)=>{
         const voteOptions = opts.map((label,i)=>({ id:'opt'+i, label }));
-        try{
-          await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
-          await sb.from('votes').delete().not('client_id','is',null);
-        }catch(e){ toast('Error: '+(e&&e.message||e)); }
+        const { error: e1 } = await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
+        if(e1) throw e1;
+        const { error: e2 } = await sb.from('votes').delete().not('client_id','is',null);
+        if(e2) throw e2;
+      };
+      const ok = await tryAutoAnalyze(genBtn, prompt, 'vote_options', VOTE_OPTIONS_SCHEMA, async (data)=>{
+        await saveVoteOptions((data && data.options) || []);
       });
-      genHost.innerHTML=''; genHost.appendChild(bridgeBox);
+      if(!ok){
+        genHost.innerHTML='';
+        const bridgeBox = buildAiBridgeBox(prompt + ` Reply ONLY with JSON: {"options":[string,...]}.`, async (parsed)=>{
+          try{ await saveVoteOptions((parsed && parsed.options) || []); }
+          catch(e){ toast('Error: '+(e&&e.message||e)); }
+        });
+        genHost.innerHTML=''; genHost.appendChild(bridgeBox);
+      }
     };
     genHost.appendChild(genBtn);
   }
@@ -1513,9 +1595,23 @@ function buildSummaryBlock(readOnly){
     if(!checklistItems.length && !startItems.filter(Boolean).length && !needItems.filter(Boolean).length) return;
     const btn = document.createElement('button');
     btn.className='btn btn-sm'; btn.textContent = t('translate_to_en_btn',lang);
-    btn.onclick = ()=>{
-      translateWrap.innerHTML='';
-      openTranslateSummaryBridge(translateWrap, checklistItems, startItems, needItems);
+    btn.onclick = async ()=>{
+      const fmtList = (arr)=> arr.map((x,i)=> x? (i+1)+'. '+x.replace(/\n/g,' ') : (i+1)+'. (empty)').join('\n') || '(none)';
+      const prompt = `Translate the following workshop outputs into English (if a line is already in English, keep it as is). Preserve meaning and order exactly; keep the same number of items in each list.\n\n`
+        + `CHECKLIST ITEMS:\n${fmtList(checklistItems)}\n\n`
+        + `COMMITMENTS - "starting tomorrow, I will...":\n${fmtList(startItems)}\n\n`
+        + `COMMITMENTS - "I need from other departments...":\n${fmtList(needItems)}\n\n`
+        + `Each output array must have exactly the same number of items as its input list above (${checklistItems.length} checklist, ${startItems.length} starts, ${needItems.length} needs); use "" for entries marked "(empty)".`;
+      const saveTranslation = async (data)=>{
+        const themes = { checklist:(data&&data.checklist)||[], starts:(data&&data.starts)||[], needs:(data&&data.needs)||[] };
+        const { error } = await sb.from('analysis').upsert({ key:'summary__translated', themes, updated_at:new Date().toISOString() });
+        if(error) throw error;
+      };
+      const ok = await tryAutoAnalyze(btn, prompt, 'summary_translation', SUMMARY_TRANSLATE_SCHEMA, saveTranslation);
+      if(!ok){
+        translateWrap.innerHTML='';
+        openTranslateSummaryBridge(translateWrap, checklistItems, startItems, needItems);
+      }
     };
     translateWrap.appendChild(btn);
   }
