@@ -110,11 +110,28 @@ body.screen-mode .theme-card strong{font-size:17px;}
 body.screen-mode .pill{font-size:13.5px; padding:5px 13px;}
 body.screen-mode .scroll-list{max-height:340px;}
 body.screen-mode .bar-track{height:30px;}
+.print-only{display:none;}
+@media print{
+  body > *:not(#printReport){display:none!important;}
+  #printReport{display:block!important; color:#000; background:#fff; font-family:Georgia,'Times New Roman',serif; padding:0; margin:0;}
+  #printReport h1{font-size:20px; margin:0 0 2px;}
+  #printReport h2{font-size:16px; margin:22px 0 6px; border-bottom:1px solid #000; padding-bottom:4px; page-break-after:avoid;}
+  #printReport h3{font-size:12.5px; margin:12px 0 4px; page-break-after:avoid;}
+  #printReport ul.report-list{margin:0 0 8px 18px; padding:0; font-size:11.5px; line-height:1.5;}
+  #printReport .report-dept{font-weight:700;}
+  #printReport .report-empty{font-style:italic; color:#555; font-size:11.5px;}
+  #printReport .report-theme{margin-bottom:6px; font-size:11.5px;}
+  #printReport .report-pri{font-size:9.5px; text-transform:uppercase; border:1px solid #000; padding:1px 5px; border-radius:8px; margin-left:4px;}
+  #printReport .report-examples{font-size:10.5px; color:#333; font-style:italic; margin-top:2px;}
+  #printReport .report-meta{font-size:11px; color:#333; margin-bottom:10px;}
+  #printReport .report-conclusions-label{font-weight:700; font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.03em;}
+}
 </style>
 </head>
 <body>
 <div id="app" class="wrap"></div>
 <div id="toast" class="toast"></div>
+<div id="printReport" class="print-only"></div>
 
 <script>
 /* =====================================================================
@@ -164,6 +181,8 @@ const UI = {
   archive_list_title:{pl:'Archiwum warsztatów',en:'Workshop archive'},
   archive_back_btn:{pl:'← Powrót do bieżącej sesji',en:'← Back to current session'},
   archive_empty:{pl:'Brak zarchiwizowanych sesji.',en:'No archived sessions yet.'},
+  generate_pdf_btn:{pl:'📄 Wygeneruj PDF (wszystkie odpowiedzi i wnioski)',en:'📄 Generate PDF (all answers and conclusions)'},
+  report_conclusions_label:{pl:'Wnioski (AI)',en:'Conclusions (AI)'},
   reset_confirm:{pl:'To usunie wszystkie odpowiedzi, głosy i analizy z tej sesji. Kontynuować?',en:'This will delete all responses, votes and analysis from this session. Continue?'},
   sufler:{pl:'Sufler moderatora',en:"Moderator's script"},
   duration:{pl:'Czas',en:'Duration'},
@@ -727,6 +746,103 @@ function renderArchivedSummary(session){
   return el;
 }
 
+/* ===================== Full PDF report (all raw answers + AI conclusions) ===================== */
+function renderThemesHtml(themes){
+  if(!themes || !Array.isArray(themes) || !themes.length) return '';
+  return `<div class="report-conclusions-label">${escapeHtml(t('report_conclusions_label',lang))}</div><div class="report-themes">` + themes.map(th=>{
+    const pri = ['high','medium','low'].includes(th.priority) ? th.priority : null;
+    return `<div class="report-theme"><strong>${escapeHtml(th.theme||'')}</strong>${pri? ` <span class="report-pri">${escapeHtml(t('priority_'+pri,lang))}</span>` : ''}${th.count? ' · '+th.count : ''}
+      ${(th.examples||[]).length? `<div class="report-examples">${th.examples.map(e=>'“'+escapeHtml(e)+'”').join(' · ')}</div>` : ''}
+    </div>`;
+  }).join('') + `</div>`;
+}
+
+async function buildFullReportHtml(){
+  const [{data:allResponses}, {data:allAnalysis}] = await Promise.all([
+    sb.from('responses').select('*'),
+    sb.from('analysis').select('*'),
+  ]);
+  const responses = allResponses||[]; const analysisRows = allAnalysis||[];
+  const findAnalysis = (key)=>{ const row = analysisRows.find(a=>a.key===key); return row ? row.themes : null; };
+  let votes = [];
+  if(currentSession.vote_module_id){
+    const { data } = await sb.from('votes').select('*').eq('module_id', currentSession.vote_module_id);
+    votes = data||[];
+  }
+
+  const now = new Date().toLocaleString(lang==='pl'?'pl-PL':'en-US');
+  let html = `<h1>${escapeHtml(t('title',lang))}</h1><div class="report-meta">${escapeHtml(t('subtitle',lang))} — ${escapeHtml(now)}</div>`;
+
+  MODULES.forEach(m=>{
+    if(m.type==='lobby' || m.type==='info' || m.type==='summary') return;
+    const label = (m.num!=null? m.num+'. ':'') + (m.title[lang]||'').replace(/^\d+\.\s*/,'');
+    html += `<h2>${escapeHtml(label)}${m.subtitle && m.subtitle[lang] ? ' — '+escapeHtml(m.subtitle[lang]) : ''}</h2>`;
+    const moduleResponses = responses.filter(r=>r.module_id===m.id);
+    m.fields.forEach(f=>{
+      html += `<h3>${escapeHtml(f.label[lang])}</h3>`;
+      const items = moduleResponses.filter(r=>r.values && r.values[f.id]).map(r=>({dept:r.dept, text:r.values[f.id]}));
+      if(!items.length){ html += `<div class="report-empty">${escapeHtml(t('no_responses',lang))}</div>`; }
+      else html += `<ul class="report-list">` + items.map(it=>`<li>${it.dept? `<span class="report-dept">${escapeHtml(t('dept_'+it.dept,lang))}:</span> `:''}${escapeHtml(it.text)}</li>`).join('') + `</ul>`;
+      html += renderThemesHtml(findAnalysis(m.id+'__'+f.id));
+    });
+    if(m.id==='ceo_discussion' && (currentSession.vote_options||[]).length){
+      html += `<h3>${escapeHtml(t('vote_results',lang))}</h3>`;
+      const counts={}; currentSession.vote_options.forEach(o=>counts[o.id]=0);
+      votes.forEach(v=>(v.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
+      const sorted = currentSession.vote_options.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0));
+      html += `<ul class="report-list">` + sorted.map((o,i)=>`<li>#${i+1} ${escapeHtml(o.label||'')} — ${counts[o.id]||0}</li>`).join('') + `</ul>`;
+    }
+    if(m.id==='charter' && (currentSession.charter||[]).length){
+      html += `<h3>${escapeHtml(t('summary_charter',lang))}</h3>`;
+      html += `<ul class="report-list">` + currentSession.charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') + `</ul>`;
+    }
+  });
+
+  const translatedRow = analysisRows.find(a=>a.key==='summary__translated');
+  const translated = (translatedRow && translatedRow.themes && !Array.isArray(translatedRow.themes)) ? translatedRow.themes : null;
+  const checklistRaw = responses.filter(r=>r.module_id==='journey_sim' && r.values && r.values.checklist_item).map(r=>r.values.checklist_item);
+  const checklist = (translated && translated.checklist && translated.checklist.length) ? translated.checklist : checklistRaw;
+  const closingDocs = responses.filter(r=>r.module_id==='closing');
+  const rawStarts = closingDocs.map(d=>(d.values&&d.values.start_tomorrow)||'');
+  const rawNeeds = closingDocs.map(d=>(d.values&&d.values.need_from_others)||'');
+  const starts = (translated && translated.starts && translated.starts.length===rawStarts.length) ? translated.starts : rawStarts;
+  const needs = (translated && translated.needs && translated.needs.length===rawNeeds.length) ? translated.needs : rawNeeds;
+
+  html += `<h2>${escapeHtml(t('summary_title',lang))}</h2>`;
+  html += `<h3>${escapeHtml(t('summary_checklist',lang))}</h3><ul class="report-list">` + (checklist.length? checklist.map(x=>`<li>${escapeHtml(x)}</li>`).join('') : `<li class="report-empty">${escapeHtml(t('summary_empty',lang))}</li>`) + `</ul>`;
+
+  html += `<h3>${escapeHtml(t('summary_ideas',lang))}</h3>`;
+  if((currentSession.vote_options||[]).length){
+    const counts={}; currentSession.vote_options.forEach(o=>counts[o.id]=0);
+    votes.forEach(v=>(v.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
+    const top3 = currentSession.vote_options.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)).slice(0,3);
+    html += `<ul class="report-list">` + top3.map((o,i)=>`<li>#${i+1} ${escapeHtml(o.label||'')} (${counts[o.id]||0})</li>`).join('') + `</ul>`;
+  } else html += `<div class="report-empty">${escapeHtml(t('summary_empty',lang))}</div>`;
+
+  html += `<h3>${escapeHtml(t('summary_charter',lang))}</h3><ul class="report-list">` + ((currentSession.charter||[]).length? currentSession.charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') : `<li class="report-empty">${escapeHtml(t('summary_empty',lang))}</li>`) + `</ul>`;
+
+  html += `<h3>${escapeHtml(t('summary_commit',lang))}</h3>`;
+  const n = Math.max(starts.length, needs.length);
+  if(!n){ html += `<div class="report-empty">${escapeHtml(t('summary_empty',lang))}</div>`; }
+  else {
+    html += `<ul class="report-list">`;
+    for(let i=0;i<n;i++){
+      if(!starts[i] && !needs[i]) continue;
+      html += `<li>${starts[i]? '➡ '+escapeHtml(starts[i])+'<br/>':''}${needs[i]? '🤝 '+escapeHtml(needs[i]):''}</li>`;
+    }
+    html += `</ul>`;
+  }
+  return html;
+}
+
+async function generateFullReportPdf(){
+  const container = document.getElementById('printReport');
+  try{
+    container.innerHTML = await buildFullReportHtml();
+    setTimeout(()=> window.print(), 100);
+  }catch(e){ toast('Error: '+(e&&e.message||e)); }
+}
+
 async function doArchiveAndReset(){
   const defaultName = `${t('title',lang)} — ${new Date().toLocaleDateString(lang==='pl'?'pl-PL':'en-US')}`;
   const name = prompt(t('archive_name_prompt',lang), defaultName);
@@ -978,11 +1094,17 @@ function buildResultsPanel(mod){
   }
   if(mod.type==='summary'){
     body.appendChild(buildSummaryBlock(false));
+    const btnRow = document.createElement('div');
+    btnRow.className='row'; btnRow.style.marginTop='16px';
+    const pdfBtn = document.createElement('button');
+    pdfBtn.className='btn btn-sm'; pdfBtn.textContent = t('generate_pdf_btn',lang);
+    pdfBtn.onclick = generateFullReportPdf;
     const archBtn = document.createElement('button');
-    archBtn.className='btn btn-primary btn-sm'; archBtn.style.marginTop='16px';
+    archBtn.className='btn btn-primary btn-sm';
     archBtn.textContent = t('archive_btn',lang);
     archBtn.onclick = doArchiveAndReset;
-    body.appendChild(archBtn);
+    btnRow.appendChild(pdfBtn); btnRow.appendChild(archBtn);
+    body.appendChild(btnRow);
     return panel;
   }
 
