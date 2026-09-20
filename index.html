@@ -143,6 +143,7 @@ const UI = {
   change_join:{pl:'Zmień dział / język',en:'Change department / language'},
   submit:{pl:'Wyślij odpowiedź',en:'Submit answer'},
   thanks:{pl:'Dziękujemy! Twoja odpowiedź została zapisana.',en:'Thanks! Your answer has been recorded.'},
+  waiting:{pl:'Moderator jeszcze nie rozpoczął tego etapu. Poczekaj na instrukcję.',en:'The moderator has not started this stage yet. Please wait.'},
   break_title:{pl:'☕ Przerwa',en:'☕ Break'},
   break_sub:{pl:'Wróć na swoje miejsce za kilka minut.',en:'Please be back in your seat shortly.'},
   online_now:{pl:'online',en:'online'},
@@ -199,6 +200,9 @@ const UI = {
   time_up:{pl:'CZAS MINĄŁ',en:"TIME'S UP"},
   module_break:{pl:'Przerwa',en:'Break'},
   module_summary:{pl:'Podsumowanie',en:'Summary'},
+  module_lobby:{pl:'🚀 Start',en:'🚀 Start'},
+  scan_to_join:{pl:'Zeskanuj kod telefonem, aby dołączyć do warsztatu',en:'Scan the code with your phone to join the workshop'},
+  lobby_host_note:{pl:'Poczekaj, aż uczestnicy dołączą (widzisz licznik online powyżej), a następnie kliknij „1. Powitanie i Icebreaker”, aby rozpocząć.',en:'Wait for participants to join (see the online counter above), then click "1. Welcome & Icebreaker" to begin.'},
   optional_bank_note:{pl:'Opcjonalny bank pytań — użyj, jeśli etap kończy się wcześniej lub dyskusja wymaga pogłębienia.',en:'Optional backup question bank — use if a module finishes early or discussion needs deepening.'},
   parallel_note:{pl:'Wszystkie trzy działy pracują równolegle w osobnych grupach, a następnie krótko dzielą się wnioskami na forum (~5 min).',en:'All three departments work simultaneously in separate groups, then briefly share back with the whole room (~5 min).'},
   jump_hint:{pl:'Kliknij etap, aby go aktywować dla uczestników',en:'Click a stage to activate it for participants'},
@@ -207,6 +211,11 @@ function t(key,lang){ return (UI[key] && UI[key][lang]) || (UI[key] && UI[key].e
 
 /* ===================== Module registry ===================== */
 const MODULES = [
+  { id:'lobby', num:null, type:'lobby',
+    title:{pl:'Poczekalnia',en:'Lobby'}, subtitle:{pl:'',en:''},
+    script:{ pl:['Uczestnicy skanują kod QR na ekranie, aby dołączyć na swoich telefonach.','Gdy większość dołączy (patrz licznik „online” powyżej), kliknij „1. Powitanie i Icebreaker”, aby rozpocząć.'], en:['Participants scan the QR code on screen to join on their phones.','Once most have joined (see the "online" counter above), click "1. Welcome & Icebreaker" to begin.'] },
+    fields:[]
+  },
   { id:'welcome', num:1, duration:15, needsDept:false,
     title:{pl:'1. Powitanie i Icebreaker',en:'1. Welcome & Icebreaker'},
     subtitle:{pl:'„Jeden klient – trzy perspektywy”',en:'"One Customer – Three Perspectives"'},
@@ -320,7 +329,7 @@ let pname = localStorage.getItem('wtool_name') || '';
 let clientId = localStorage.getItem('wtool_client_id');
 if(!clientId){ clientId = 'c'+Math.random().toString(36).slice(2)+Date.now().toString(36); localStorage.setItem('wtool_client_id', clientId); }
 
-let currentSession = { active_module:'welcome', vote_options:[], vote_module_id:null, charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null };
+let currentSession = { active_module:'lobby', vote_options:[], vote_module_id:null, charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null };
 let peerCount = 1;
 const app = document.getElementById('app');
 
@@ -450,6 +459,10 @@ function renderParticipant(){
     card.innerHTML = `<div style="text-align:center;padding:30px 10px;">
       <div class="disp" style="font-size:26px;font-weight:800;">${t('break_title',lang)}</div>
       <div class="muted" style="margin-top:8px;">${t('break_sub',lang)}</div>
+    </div>`;
+  } else if(mod.type==='lobby'){
+    card.innerHTML = `<div style="text-align:center;padding:30px 10px;">
+      <div class="muted">${t('waiting',lang)}</div>
     </div>`;
   } else if(mod.type==='summary'){
     card.appendChild(buildSummaryBlock());
@@ -624,7 +637,7 @@ function renderHost(){
 
   const nav = shell.querySelector('#moduleNav');
   MODULES.forEach(m=>{
-    const label = m.type==='summary'? t('module_summary',lang) : (m.type==='info'? t('module_break',lang) : (m.num+'. '+(m.title[lang]||'').replace(/^\d+\.\s*/,'')));
+    const label = m.type==='summary'? t('module_summary',lang) : (m.type==='info'? t('module_break',lang) : (m.type==='lobby'? t('module_lobby',lang) : (m.num+'. '+(m.title[lang]||'').replace(/^\d+\.\s*/,''))));
     const chip = document.createElement('button');
     chip.className='module-chip'+(m.id===mod.id?' active':'');
     chip.textContent = label;
@@ -653,6 +666,25 @@ function renderScreen(){
     return;
   }
   const mod = moduleById(currentSession.active_module) || MODULES[0];
+
+  if(mod.type==='lobby'){
+    const joinUrl = location.origin + location.pathname;
+    const lobby = document.createElement('div');
+    lobby.style.cssText='min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px;';
+    lobby.innerHTML = `
+      <div>
+        <div class="disp" style="font-weight:800;font-size:38px;">${escapeHtml(t('title',lang))}</div>
+        <div class="soft" style="font-size:19px;margin-top:6px;">${escapeHtml(t('subtitle',lang))}</div>
+      </div>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=340x340&data=${encodeURIComponent(joinUrl)}" alt="QR" width="340" height="340" style="border-radius:16px;border:1px solid var(--border);background:#fff;padding:14px;box-shadow:var(--shadow);" />
+      <div class="mono" style="font-size:20px;">${escapeHtml(joinUrl)}</div>
+      <div class="muted" style="font-size:17px;">${t('scan_to_join',lang)}</div>
+      <div class="pill" style="background:var(--accent-soft);color:var(--accent-strong);">● <span id="peerCountVal">${peerCount}</span> ${t('online_now',lang)}</div>
+    `;
+    app.appendChild(lobby);
+    return;
+  }
+
   const shell = document.createElement('div');
   const label = mod.type==='summary'? t('module_summary',lang) : (mod.type==='info'? t('module_break',lang) : (mod.num+'. '+(mod.title[lang]||'').replace(/^\d+\.\s*/,'')));
   shell.innerHTML = `
@@ -833,6 +865,10 @@ function buildResultsPanel(mod){
     body.innerHTML = `<div class="muted">${t('break_sub',lang)}</div>`;
     return panel;
   }
+  if(mod.type==='lobby'){
+    body.innerHTML = `<div class="muted">${t('lobby_host_note',lang)}</div>`;
+    return panel;
+  }
   if(mod.type==='summary'){
     body.appendChild(buildSummaryBlock());
     return panel;
@@ -948,9 +984,7 @@ function buildAiBridgeBox(promptText, onSave){
 function openAnalyzeBridge(host, mod, field, items){
   host.innerHTML='';
   const list = items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
-  const prompt = lang==='pl'
-    ? `Oto surowe odpowiedzi uczestników warsztatu na pytanie: "${field.label.pl}"\n\n${list}\n\nPogrupuj je w 3-6 tematycznych kategorii. Dla każdej podaj: krótką nazwę tematu po polsku, liczbę pasujących odpowiedzi, priorytet ("high"/"medium"/"low" na podstawie częstości i wagi problemu) oraz maks. 2 krótkie przykładowe cytaty. Odpowiedz WYŁĄCZNIE w formacie JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, posortowane malejąco po priorytecie.`
-    : `Here are raw workshop participant answers to the question: "${field.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. For each give: a short theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes. Reply ONLY with JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, sorted by priority descending.`;
+  const prompt = `Here are raw workshop participant answers, possibly written in Polish or English, to the question: "${field.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. Respond entirely in English regardless of the original language of the answers — translate any Polish text into English. For each category give: a short English theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes translated into English. Reply ONLY with JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, sorted by priority descending.`;
   const box = buildAiBridgeBox(prompt, async (parsed)=>{
     const themes = (parsed && parsed.themes) || (Array.isArray(parsed)? parsed: []);
     try{
@@ -973,9 +1007,7 @@ function buildVoteAdminBlock(mod, docs, readOnly){
       const items = docs.filter(d=>d.values && d.values.one_change).map(d=>d.values.one_change);
       if(!items.length){ toast(t('no_responses_ai',lang)); return; }
       const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
-      const prompt = lang==='pl'
-        ? `Oto propozycje zmian od uczestników warsztatu:\n\n${list}\n\nWyodrębnij unikalne, konkretne pomysły (połącz duplikaty i bardzo podobne). Zwróć 5-10 pozycji. Odpowiedz WYŁĄCZNIE w formacie JSON: {"options":[string,...]} — każdy string to krótki, zrozumiały opis pomysłu po polsku.`
-        : `Here are improvement proposals from workshop participants:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates). Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
+      const prompt = `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items. Reply ONLY with JSON: {"options":[string,...]} — each string a short, clear idea description in English.`;
       genHost.innerHTML='';
       const bridgeBox = buildAiBridgeBox(prompt, async (parsed)=>{
         const opts = (parsed && parsed.options) || [];
@@ -1107,7 +1139,7 @@ async function doReset(){
     await sb.from('responses').delete().not('id','is',null);
     await sb.from('votes').delete().not('client_id','is',null);
     await sb.from('analysis').delete().not('key','is',null);
-    await sb.from('session_state').update({ active_module:'welcome', vote_module_id:null, vote_options:[], charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1);
+    await sb.from('session_state').update({ active_module:'lobby', vote_module_id:null, vote_options:[], charter:[], timer_module_id:null, timer_remaining_seconds:null, timer_running:false, timer_started_at:null, updated_at:new Date().toISOString() }).eq('id',1);
     toast('OK');
   }catch(e){ toast('Error: '+(e&&e.message||e)); }
 }
