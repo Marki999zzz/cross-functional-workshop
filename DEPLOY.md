@@ -45,6 +45,15 @@
 - Dzięki temu **moderator nie potrzebuje już żadnego dostępu do AI (ani do Claude, ani do innego czatu)**, żeby przeprowadzić cały warsztat od początku do końca, włącznie z eksportem PDF.
 - Test end-to-end (curl bezpośrednio na Edge Function) potwierdzony: zwraca poprawny, zgodny ze schematem JSON.
 
+**Aktualizacja (2026-09-29, analiza AI w języku polskim):**
+- Ponieważ uczestnicy warsztatu mogą być wyłącznie polskojęzyczni, analiza AI (grupowanie wniosków, lista do głosowania) **działa teraz w języku aktualnie wybranym w panelu moderatora (przełącznik PL/EN w nagłówku)**, zamiast zawsze wymuszać angielski.
+  - Gdy moderator ma ustawione **PL**: nazwy tematów, przykładowe cytaty i pomysły do głosowania są generowane po polsku (ewentualne odpowiedzi po angielsku są tłumaczone na polski).
+  - Gdy moderator ma ustawione **EN**: zachowanie bez zmian — wszystko po angielsku, jak dotychczas.
+  - Priorytety ("Wysoki/Średni/Niski priorytet") są niezależne od tego przełącznika i zawsze poprawnie przetłumaczone w interfejsie.
+- Dotyczy zarówno automatycznej analizy przez Groq, jak i ręcznego mostu (kopiuj-wklej do czatu AI) — prompt jest teraz budowany w jednym miejscu ([`buildThemeGroupingPrompt`](index.html), [`buildVoteListPrompt`](index.html)) i używany identycznie w obu ścieżkach.
+- Funkcja „🌐 Przetłumacz na angielski" na ekranie Podsumowania zostaje bez zmian (nadal opcjonalna — przydatna, gdyby mimo wszystko trzeba było mieć angielską wersję checklisty/zobowiązań).
+- Przetestowane end-to-end na żywej funkcji Groq: grupowanie wniosków i lista do głosowania po polsku zwracają poprawny, w pełni polski JSON; wersja angielska sprawdzona jako regresja — działa bez zmian.
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).

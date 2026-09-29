@@ -462,6 +462,26 @@ const SUMMARY_TRANSLATE_SCHEMA = {
   required:['checklist','starts','needs'], additionalProperties:false,
 };
 
+/* Analysis prompts are built in the current UI language (`lang`), so a
+   Polish-only workshop gets Polish theme names/examples/vote ideas instead of
+   always forcing English. The "high"/"medium"/"low" priority values must stay
+   as literal English enum strings regardless of language — they're matched
+   against THEME_SCHEMA's enum and mapped to CSS classes / t('priority_'+x). */
+function buildThemeGroupingPrompt(fieldLabel, items){
+  const list = items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
+  if(lang==='pl'){
+    return `Oto surowe odpowiedzi uczestników warsztatu (mogą być napisane po polsku lub angielsku) na pytanie: "${fieldLabel}"\n\n${list}\n\nPogrupuj je w 3-6 kategorii tematycznych. Odpowiedz całkowicie po polsku, niezależnie od języka oryginalnych odpowiedzi — ewentualny tekst angielski przetłumacz na polski. Dla każdej kategorii podaj: krótką polską nazwę tematu, liczbę pasujących odpowiedzi, priorytet ("high"/"medium"/"low" na podstawie częstości i wagi) oraz maksymalnie 2 krótkie przykładowe cytaty przetłumaczone na polski. Odpowiedz WYŁĄCZNIE w formacie JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, posortowane malejąco wg priorytetu.`;
+  }
+  return `Here are raw workshop participant answers, possibly written in Polish or English, to the question: "${fieldLabel}"\n\n${list}\n\nGroup them into 3-6 thematic categories. Respond entirely in English regardless of the original language of the answers — translate any Polish text into English. For each category give: a short English theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes translated into English. Reply ONLY with JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, sorted by priority descending.`;
+}
+function buildVoteListPrompt(items){
+  const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
+  if(lang==='pl'){
+    return `Oto propozycje usprawnień od uczestników warsztatu (mogą być napisane po polsku lub angielsku):\n\n${list}\n\nWyodrębnij unikalne, konkretne pomysły (połącz duplikaty i niemal-duplikaty). Zwróć 5-10 pozycji — każda to krótki, jasny opis pomysłu po polsku (ewentualny tekst angielski przetłumacz na polski). Odpowiedz WYŁĄCZNIE w formacie JSON: {"options":[string,...]}.`;
+  }
+  return `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items — each a short, clear idea description in English. Reply ONLY with JSON: {"options":[string,...]}.`;
+}
+
 async function callGroqAnalyze(prompt, schemaName, schema){
   const res = await fetch(GROQ_FUNCTION_URL, {
     method:'POST',
@@ -1279,8 +1299,7 @@ function renderFieldsResults(body, mod, readOnly){
         ref.btn.disabled = !items.length;
         ref.btn.onclick = async ()=>{
           if(!ref.items.length){ toast(t('no_responses_ai',lang)); return; }
-          const list = ref.items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
-          const prompt = `Here are raw workshop participant answers, possibly written in Polish or English, to the question: "${f.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. Respond entirely in English regardless of the original language of the answers — translate any Polish text into English. For each category give: a short English theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes translated into English.`;
+          const prompt = buildThemeGroupingPrompt(f.label[lang], ref.items);
           const ok = await tryAutoAnalyze(ref.btn, prompt, 'workshop_themes', THEME_SCHEMA, async (data)=>{
             const { error } = await sb.from('analysis').upsert({ key: mod.id+'__'+f.id, themes:(data&&data.themes)||[], updated_at:new Date().toISOString() });
             if(error) throw error;
@@ -1414,8 +1433,7 @@ function buildAiBridgeBox(promptText, onSave){
 
 function openAnalyzeBridge(host, mod, field, items){
   host.innerHTML='';
-  const list = items.map((it,i)=> (i+1)+'. '+it.text.replace(/\n/g,' ')).join('\n');
-  const prompt = `Here are raw workshop participant answers, possibly written in Polish or English, to the question: "${field.label.en}"\n\n${list}\n\nGroup them into 3-6 thematic categories. Respond entirely in English regardless of the original language of the answers — translate any Polish text into English. For each category give: a short English theme name, the number of matching answers, a priority ("high"/"medium"/"low" based on frequency and severity), and up to 2 short example quotes translated into English. Reply ONLY with JSON: {"themes":[{"theme":string,"count":number,"priority":"high"|"medium"|"low","examples":[string]}]}, sorted by priority descending.`;
+  const prompt = buildThemeGroupingPrompt(field.label[lang], items);
   const box = buildAiBridgeBox(prompt, async (parsed)=>{
     const themes = (parsed && parsed.themes) || (Array.isArray(parsed)? parsed: []);
     try{
@@ -1441,8 +1459,7 @@ function buildVoteAdminBlock(mod, readOnly){
     genBtn.onclick = async ()=>{
       const items = latestItems;
       if(!items.length){ toast(t('no_responses_ai',lang)); return; }
-      const list = items.map((x,i)=>(i+1)+'. '+x.replace(/\n/g,' ')).join('\n');
-      const prompt = `Here are improvement proposals from workshop participants, possibly written in Polish or English:\n\n${list}\n\nExtract unique, concrete ideas (merge duplicates and near-duplicates), translating any Polish text into English. Return 5-10 items — each a short, clear idea description in English.`;
+      const prompt = buildVoteListPrompt(items);
       const saveVoteOptions = async (opts)=>{
         const voteOptions = opts.map((label,i)=>({ id:'opt'+i, label }));
         const { error: e1 } = await sb.from('session_state').update({ vote_module_id: mod.id, vote_options: voteOptions, updated_at:new Date().toISOString() }).eq('id',1);
@@ -1455,7 +1472,7 @@ function buildVoteAdminBlock(mod, readOnly){
       });
       if(!ok){
         genHost.innerHTML='';
-        const bridgeBox = buildAiBridgeBox(prompt + ` Reply ONLY with JSON: {"options":[string,...]}.`, async (parsed)=>{
+        const bridgeBox = buildAiBridgeBox(prompt, async (parsed)=>{
           try{ await saveVoteOptions((parsed && parsed.options) || []); }
           catch(e){ toast('Error: '+(e&&e.message||e)); }
         });
