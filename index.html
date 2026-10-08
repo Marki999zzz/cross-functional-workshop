@@ -143,6 +143,7 @@ const SUPABASE_URL = "https://zylxxtekqhulgbtmjnje.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_4GPAoe8lRdk3FQf373IIag_L5ODTTQy";
 const HOST_PIN = "1234"; // PIN dostępu do panelu moderatora (?mode=host) — zmień na własny
 const GROQ_FUNCTION_URL = SUPABASE_URL + "/functions/v1/groq-analyze";
+const ARCHIVE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/archive";
 /* ===================================================================== */
 
 const sb = (window.supabase && SUPABASE_URL.startsWith('http'))
@@ -186,6 +187,10 @@ const UI = {
   archive_list_title:{pl:'Archiwum warsztatów',en:'Workshop archive'},
   archive_back_btn:{pl:'← Powrót do bieżącej sesji',en:'← Back to current session'},
   archive_empty:{pl:'Brak zarchiwizowanych sesji.',en:'No archived sessions yet.'},
+  archive_pw_title:{pl:'🔒 Archiwum — podaj hasło',en:'🔒 Archive — enter password'},
+  archive_pw_hint:{pl:'Archiwum jest chronione osobnym hasłem (innym niż PIN panelu).',en:'The archive is protected by its own password (separate from the panel PIN).'},
+  archive_pw_wrong:{pl:'Nieprawidłowe hasło.',en:'Incorrect password.'},
+  archive_pw_conn_error:{pl:'Nie udało się połączyć z archiwum. Spróbuj ponownie.',en:'Could not reach the archive. Please try again.'},
   generate_pdf_btn:{pl:'📄 Wygeneruj PDF (wszystkie odpowiedzi i wnioski)',en:'📄 Generate PDF (all answers and conclusions)'},
   report_conclusions_label:{pl:'Wnioski (AI)',en:'Conclusions (AI)'},
   reset_confirm:{pl:'To usunie wszystkie odpowiedzi, głosy i analizy z tej sesji. Kontynuować?',en:'This will delete all responses, votes and analysis from this session. Continue?'},
@@ -818,10 +823,89 @@ function renderHost(){
     const url = new URL(location.href); url.searchParams.set('mode','screen');
     window.open(url.toString(), '_blank');
   };
-  shell.querySelector('#openArchiveBtn').onclick = ()=>{ archiveViewState='list'; render(); };
+  shell.querySelector('#openArchiveBtn').onclick = async ()=>{
+    if(!(await ensureArchiveAccess())) return;
+    archiveViewState='list'; render();
+  };
 }
 
 /* ===================== Archive ===================== */
+/* The `sessions` table is closed to the public anon key (RLS, no policies);
+   everything goes through the password-protected `archive` Edge Function.
+   The password is kept only in sessionStorage (cleared when the tab closes). */
+const ARCHIVE_PW_KEY = 'wtool_archive_pw';
+
+async function archiveCall(action, args){
+  const res = await fetch(ARCHIVE_FUNCTION_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action, password: sessionStorage.getItem(ARCHIVE_PW_KEY)||'', ...(args||{}) }),
+  });
+  let data = null;
+  try{ data = await res.json(); }catch(e){}
+  if(res.status===401){
+    sessionStorage.removeItem(ARCHIVE_PW_KEY);
+    const err = new Error('Unauthorized'); err.code='unauthorized'; throw err;
+  }
+  if(!res.ok) throw new Error((data && data.error) || ('HTTP '+res.status));
+  return data;
+}
+
+function askArchivePassword(){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;';
+    overlay.innerHTML = `<div class="card" style="max-width:360px;width:100%;padding:22px;">
+      <div class="disp" style="font-size:18px;font-weight:800;text-align:center;">${t('archive_pw_title',lang)}</div>
+      <div class="muted" style="text-align:center;font-size:13px;margin:8px 0 14px;">${t('archive_pw_hint',lang)}</div>
+      <input class="field" id="arcPwInput" type="password" autocomplete="off" />
+      <div id="arcPwErr" style="color:var(--pri-high);font-size:12.5px;margin-top:8px;text-align:center;" hidden></div>
+      <div class="row" style="margin-top:14px;">
+        <button class="btn btn-primary" id="arcPwGo" style="flex:1;">${t('enter',lang)}</button>
+        <button class="btn btn-ghost" id="arcPwCancel">${t('cancel_btn',lang)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#arcPwInput');
+    const err = overlay.querySelector('#arcPwErr');
+    const goBtn = overlay.querySelector('#arcPwGo');
+    const close = (ok)=>{ overlay.remove(); resolve(ok); };
+    const submit = async ()=>{
+      const pw = input.value;
+      if(!pw) return;
+      goBtn.disabled = true; err.hidden = true;
+      sessionStorage.setItem(ARCHIVE_PW_KEY, pw);
+      try{
+        await archiveCall('check');
+        close(true);
+      }catch(e){
+        sessionStorage.removeItem(ARCHIVE_PW_KEY);
+        err.textContent = t(e.code==='unauthorized' ? 'archive_pw_wrong' : 'archive_pw_conn_error', lang);
+        err.hidden = false; goBtn.disabled = false; input.select();
+      }
+    };
+    goBtn.onclick = submit;
+    overlay.querySelector('#arcPwCancel').onclick = ()=> close(false);
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); if(e.key==='Escape') close(false); });
+    input.focus();
+  });
+}
+
+async function ensureArchiveAccess(){
+  if(sessionStorage.getItem(ARCHIVE_PW_KEY)) return true;
+  return await askArchivePassword();
+}
+
+/* Returns the function's JSON, or null if the user cancelled the password prompt. */
+async function archiveRequest(action, args){
+  for(let attempt=0; attempt<2; attempt++){
+    if(!(await ensureArchiveAccess())) return null;
+    try{ return await archiveCall(action, args); }
+    catch(e){ if(e.code!=='unauthorized') throw e; }
+  }
+  return null;
+}
+
 function renderArchiveView(){
   const shell = document.createElement('div');
   shell.innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -834,8 +918,13 @@ function renderArchiveView(){
 
   if(archiveViewState==='list'){
     (async ()=>{
-      const { data, error } = await sb.from('sessions').select('id,name,archived_at').order('archived_at',{ascending:false});
-      if(error || !data || !data.length){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
+      let data;
+      try{
+        const res = await archiveRequest('list');
+        if(!res){ archiveViewState=null; render(); return; }
+        data = res.sessions;
+      }catch(e){ bodyEl.innerHTML = `<div class="muted">${t('archive_pw_conn_error',lang)}</div>`; return; }
+      if(!data || !data.length){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
       bodyEl.innerHTML='';
       data.forEach(s=>{
         const row = document.createElement('div');
@@ -847,10 +936,15 @@ function renderArchiveView(){
     })();
   } else {
     (async ()=>{
-      const { data, error } = await sb.from('sessions').select('*').eq('id', archiveViewState).single();
-      if(error || !data){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
+      let session;
+      try{
+        const res = await archiveRequest('get', { id: archiveViewState });
+        if(!res){ archiveViewState=null; render(); return; }
+        session = res.session;
+      }catch(e){ bodyEl.innerHTML = `<div class="muted">${t('archive_pw_conn_error',lang)}</div>`; return; }
+      if(!session){ bodyEl.innerHTML = `<div class="muted">${t('archive_empty',lang)}</div>`; return; }
       const card = document.createElement('div'); card.className='card'; card.style.padding='22px';
-      card.appendChild(renderArchivedSummary(data));
+      card.appendChild(renderArchivedSummary(session));
       bodyEl.innerHTML=''; bodyEl.appendChild(card);
     })();
   }
@@ -976,6 +1070,7 @@ async function generateFullReportPdf(){
 }
 
 async function doArchiveAndReset(){
+  if(!(await ensureArchiveAccess())) return;
   const defaultName = `${t('title',lang)} — ${new Date().toLocaleDateString(lang==='pl'?'pl-PL':'en-US')}`;
   const name = prompt(t('archive_name_prompt',lang), defaultName);
   if(name===null) return;
@@ -1002,8 +1097,8 @@ async function doArchiveAndReset(){
     const commitments = rawStarts.map((_,i)=>({start:starts[i], need:needs[i]})).filter(c=>c.start||c.need);
 
     const data = { checklist, topIdeas, charter: currentSession.charter||[], commitments };
-    const { error: insErr } = await sb.from('sessions').insert({ name, data });
-    if(insErr) throw insErr;
+    const saved = await archiveRequest('save', { name, data });
+    if(!saved) return;
 
     await sb.from('responses').delete().not('id','is',null);
     await sb.from('votes').delete().not('client_id','is',null);

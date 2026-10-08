@@ -54,6 +54,13 @@
 - Funkcja „🌐 Przetłumacz na angielski" na ekranie Podsumowania zostaje bez zmian (nadal opcjonalna — przydatna, gdyby mimo wszystko trzeba było mieć angielską wersję checklisty/zobowiązań).
 - Przetestowane end-to-end na żywej funkcji Groq: grupowanie wniosków i lista do głosowania po polsku zwracają poprawny, w pełni polski JSON; wersja angielska sprawdzona jako regresja — działa bez zmian.
 
+**Aktualizacja (2026-10-08, prywatne archiwum):**
+- **Problem:** repozytorium jest publiczne, a razem z nim klucz `anon` Supabase widoczny w kodzie strony. Tabela `sessions` (archiwum) miała otwartą politykę RLS, więc każdy mógł odczytać wszystkie zarchiwizowane warsztaty bezpośrednio z API (sprawdzone: 3 wpisy czytelne anonimowo).
+- **Rozwiązanie:** tabela `sessions` jest teraz zamknięta dla klucza `anon` (RLS bez żadnych polityk, poza replikacją realtime). Dostęp tylko przez Edge Function [`archive`](supabase/functions/archive/index.ts) — sprawdza hasło z sekretu `ARCHIVE_PASSWORD` (porównanie w stałym czasie, opóźnienie przy złym haśle) i dopiero wtedy czyta/zapisuje archiwum kluczem service role, który nigdy nie opuszcza serwera.
+- **W aplikacji:** przy „🗂 Archiwum" oraz przy „📦 Zarchiwizuj i rozpocznij nową sesję" pojawia się okienko z hasłem (osobnym od PIN-u panelu `1234`, który jest tylko blokadą interfejsu). Hasło pamiętane jest wyłącznie w `sessionStorage` karty (znika po jej zamknięciu). Gdy zapis do archiwum się nie uda, dane bieżącej sesji **nie są kasowane**.
+- **Zmiana hasła:** Supabase → Edge Functions → Secrets → `ARCHIVE_PASSWORD` (po zmianie przy następnym wejściu do archiwum aplikacja poprosi o nowe hasło). Hasła nie zapisujemy w repozytorium.
+- **Czego to NIE zamyka:** dane bieżącej sesji (`responses`, `votes`, `analysis`, `session_state`) są nadal dostępne dla klucza `anon` — to wynika z założenia „uczestnik bez konta" i trwa tylko do momentu archiwizacji/resetu. Panel moderatora (PIN) nadal nie jest zabezpieczeniem na poziomie bazy.
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).

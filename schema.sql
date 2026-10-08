@@ -90,8 +90,11 @@ create policy votes_all on votes for all using (true) with check (true);
 drop policy if exists analysis_all on analysis;
 create policy analysis_all on analysis for all using (true) with check (true);
 
+-- sessions (archiwum): RLS włączone i CELOWO brak jakiejkolwiek polityki =
+-- klucz anon (publiczny w kodzie strony) nie może ani czytać, ani zapisywać.
+-- Dostęp wyłącznie przez Edge Function `archive` (klucz service role + hasło
+-- z sekretu ARCHIVE_PASSWORD).
 drop policy if exists sessions_all on sessions;
-create policy sessions_all on sessions for all using (true) with check (true);
 
 -- ============================================================
 -- Realtime — włącz replikację zmian dla live-aktualizacji ekranu.
@@ -100,4 +103,4 @@ alter publication supabase_realtime add table session_state;
 alter publication supabase_realtime add table responses;
 alter publication supabase_realtime add table votes;
 alter publication supabase_realtime add table analysis;
-alter publication supabase_realtime add table sessions;
+-- (sessions celowo poza replikacją realtime — archiwum jest prywatne)
