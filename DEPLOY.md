@@ -61,6 +61,14 @@
 - **Zmiana hasła:** Supabase → Edge Functions → Secrets → `ARCHIVE_PASSWORD` (po zmianie przy następnym wejściu do archiwum aplikacja poprosi o nowe hasło). Hasła nie zapisujemy w repozytorium.
 - **Czego to NIE zamyka:** dane bieżącej sesji (`responses`, `votes`, `analysis`, `session_state`) są nadal dostępne dla klucza `anon` — to wynika z założenia „uczestnik bez konta" i trwa tylko do momentu archiwizacji/resetu. Panel moderatora (PIN) nadal nie jest zabezpieczeniem na poziomie bazy.
 
+**Aktualizacja (2026-10-08, pełna migawka w archiwum):**
+- Dotychczas archiwum zapisywało tylko skrót (checklista, top 3 pomysły, karta, zobowiązania), a surowe odpowiedzi i analizy były kasowane przy resecie. Teraz „📦 Zarchiwizuj i rozpocznij nową sesję" zapisuje dodatkowo **pełną migawkę** (`data.full`): wszystkie odpowiedzi uczestników (moduł, dział, treść, czas), analizy AI wraz z poprawkami i **komentarzami moderatora**, głosy, pełną listę opcji do głosowania i kartę współpracy.
+- **Nie zapisujemy** imion uczestników ani identyfikatorów urządzeń (raport i tak pokazuje tylko dział).
+- W archiwum, po wejściu w sesję: „📋 Pokaż wszystkie odpowiedzi i wnioski" (podgląd na ekranie) oraz „📄 Wygeneruj PDF" — ten sam raport co dla bieżącej sesji, z nazwą i datą archiwizacji. Dane nadal są chronione hasłem archiwum.
+- Raport budowany jest teraz z jednego źródła danych (`fetchLiveReportSource` → `buildReportHtmlFromSource`), więc bieżąca sesja i archiwum zawsze wyglądają identycznie. Styl raportu (`.report-doc`) działa i na ekranie, i w druku.
+- Starsze archiwa (przed 2026-10-08) nie mają pełnych danych — aplikacja pokazuje przy nich informację, że dostępne jest tylko podsumowanie. Surowych danych z tych sesji nie da się odzyskać (zostały skasowane przy archiwizacji).
+- Rozmiar wpisu archiwum ograniczony do ok. 1 MB po stronie funkcji `archive`; jeśli zapis się nie uda, dane bieżącej sesji nie są kasowane.
+
 **Ważne przy edycji `index.html` w przyszłości:** edytor tekstowy GitHuba (CodeMirror) w tej sesji nie reagował na skróty klawiszowe (Ctrl+A itp.) wysyłane przez automatyzację przeglądarki — do aktualizacji pliku zadziałało wgranie przez `github.com/<repo>/upload/main` (drag&drop / wybór pliku), a nie edycja w przeglądarkowym edytorze.
 
 Poniższa instrukcja zostaje jako odniesienie, gdyby trzeba było powtórzyć wdrożenie (np. nowe repo, inny projekt Supabase).

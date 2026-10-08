@@ -111,29 +111,31 @@ body.screen-mode .pill{font-size:13.5px; padding:5px 13px;}
 body.screen-mode .scroll-list{max-height:340px;}
 body.screen-mode .bar-track{height:30px;}
 .print-only{display:none;}
+.report-doc{color:#000; background:#fff; font-family:Georgia,'Times New Roman',serif;}
+.report-doc h1{font-size:20px; margin:0 0 2px;}
+.report-doc h2{font-size:16px; margin:22px 0 6px; border-bottom:1px solid #000; padding-bottom:4px; page-break-after:avoid;}
+.report-doc h3{font-size:12.5px; margin:12px 0 4px; page-break-after:avoid;}
+.report-doc ul.report-list{margin:0 0 8px 18px; padding:0; font-size:11.5px; line-height:1.5;}
+.report-doc .report-dept{font-weight:700;}
+.report-doc .report-empty{font-style:italic; color:#555; font-size:11.5px;}
+.report-doc .report-theme{margin-bottom:6px; font-size:11.5px;}
+.report-doc .report-pri{font-size:9.5px; text-transform:uppercase; border:1px solid #000; padding:1px 5px; border-radius:8px; margin-left:4px;}
+.report-doc .report-examples{font-size:10.5px; color:#333; font-style:italic; margin-top:2px;}
+.report-doc .report-meta{font-size:11px; color:#333; margin-bottom:10px;}
+.report-doc .report-conclusions-label{font-weight:700; font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.03em;}
+.report-doc .report-comment{font-size:11px; color:#000; margin-top:6px; padding:4px 8px; border-left:2px solid #000; background:#f2f2f2;}
+.report-doc .report-comment-label{font-weight:700; text-transform:uppercase; font-size:9.5px; letter-spacing:.03em;}
+.report-paper{padding:22px 26px; border-radius:12px; margin-top:12px;}
 @media print{
   body > *:not(#printReport){display:none!important;}
-  #printReport{display:block!important; color:#000; background:#fff; font-family:Georgia,'Times New Roman',serif; padding:0; margin:0;}
-  #printReport h1{font-size:20px; margin:0 0 2px;}
-  #printReport h2{font-size:16px; margin:22px 0 6px; border-bottom:1px solid #000; padding-bottom:4px; page-break-after:avoid;}
-  #printReport h3{font-size:12.5px; margin:12px 0 4px; page-break-after:avoid;}
-  #printReport ul.report-list{margin:0 0 8px 18px; padding:0; font-size:11.5px; line-height:1.5;}
-  #printReport .report-dept{font-weight:700;}
-  #printReport .report-empty{font-style:italic; color:#555; font-size:11.5px;}
-  #printReport .report-theme{margin-bottom:6px; font-size:11.5px;}
-  #printReport .report-pri{font-size:9.5px; text-transform:uppercase; border:1px solid #000; padding:1px 5px; border-radius:8px; margin-left:4px;}
-  #printReport .report-examples{font-size:10.5px; color:#333; font-style:italic; margin-top:2px;}
-  #printReport .report-meta{font-size:11px; color:#333; margin-bottom:10px;}
-  #printReport .report-conclusions-label{font-weight:700; font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.03em;}
-  #printReport .report-comment{font-size:11px; color:#000; margin-top:6px; padding:4px 8px; border-left:2px solid #000; background:#f2f2f2;}
-  #printReport .report-comment-label{font-weight:700; text-transform:uppercase; font-size:9.5px; letter-spacing:.03em;}
+  #printReport{display:block!important; padding:0; margin:0;}
 }
 </style>
 </head>
 <body>
 <div id="app" class="wrap"></div>
 <div id="toast" class="toast"></div>
-<div id="printReport" class="print-only"></div>
+<div id="printReport" class="print-only report-doc"></div>
 
 <script>
 /* =====================================================================
@@ -187,6 +189,9 @@ const UI = {
   archive_list_title:{pl:'Archiwum warsztatów',en:'Workshop archive'},
   archive_back_btn:{pl:'← Powrót do bieżącej sesji',en:'← Back to current session'},
   archive_empty:{pl:'Brak zarchiwizowanych sesji.',en:'No archived sessions yet.'},
+  archive_full_show:{pl:'📋 Pokaż wszystkie odpowiedzi i wnioski',en:'📋 Show all answers and conclusions'},
+  archive_full_hide:{pl:'📋 Ukryj odpowiedzi i wnioski',en:'📋 Hide answers and conclusions'},
+  archive_no_full:{pl:'Ta sesja została zarchiwizowana, zanim archiwum zaczęło zapisywać pełne odpowiedzi — dostępne jest tylko powyższe podsumowanie.',en:'This session was archived before full answers were saved — only the summary above is available.'},
   archive_pw_title:{pl:'🔒 Archiwum — podaj hasło',en:'🔒 Archive — enter password'},
   archive_pw_hint:{pl:'Archiwum jest chronione osobnym hasłem (innym niż PIN panelu).',en:'The archive is protected by its own password (separate from the panel PIN).'},
   archive_pw_wrong:{pl:'Nieprawidłowe hasło.',en:'Incorrect password.'},
@@ -960,6 +965,28 @@ function renderArchivedSummary(session){
   sec('summary_ideas', (d.topIdeas||[]).map((o,i)=>`<div class="resp-item"><strong>#${i+1}</strong> ${escapeHtml(o.label||'')} <span class="soft">(${o.count||0})</span></div>`).join(''));
   sec('summary_charter', (d.charter||[]).map(x=>`<div class="resp-item">📌 ${escapeHtml(x)}</div>`).join(''));
   sec('summary_commit', (d.commitments||[]).map(c=>`<div class="resp-item">${c.start? '➡ '+escapeHtml(c.start)+'<br/>':''}${c.need? '🤝 '+escapeHtml(c.need):''}</div>`).join(''));
+
+  if(d.full){
+    const opts = { title: session.name, when: session.archived_at };
+    const bar = document.createElement('div'); bar.className='row'; bar.style.marginTop='20px';
+    const viewBtn = document.createElement('button');
+    viewBtn.className='btn btn-sm'; viewBtn.textContent = t('archive_full_show',lang);
+    const pdfBtn = document.createElement('button');
+    pdfBtn.className='btn btn-sm'; pdfBtn.textContent = t('generate_pdf_btn',lang);
+    const paper = document.createElement('div'); paper.className='report-doc report-paper'; paper.hidden = true;
+    viewBtn.onclick = ()=>{
+      if(paper.hidden){ paper.innerHTML = buildReportHtmlFromSource(d.full, opts); paper.hidden = false; viewBtn.textContent = t('archive_full_hide',lang); }
+      else { paper.hidden = true; viewBtn.textContent = t('archive_full_show',lang); }
+    };
+    pdfBtn.onclick = ()=>{
+      document.getElementById('printReport').innerHTML = buildReportHtmlFromSource(d.full, opts);
+      setTimeout(()=> window.print(), 100);
+    };
+    bar.appendChild(viewBtn); bar.appendChild(pdfBtn);
+    el.appendChild(bar); el.appendChild(paper);
+  } else {
+    el.insertAdjacentHTML('beforeend', `<div class="muted" style="font-size:12.5px;margin-top:18px;">${t('archive_no_full',lang)}</div>`);
+  }
   return el;
 }
 
@@ -983,21 +1010,42 @@ function renderThemesHtml(row){
   return html;
 }
 
-async function buildFullReportHtml(){
+/* Everything the full report needs, in a plain JSON-able shape. The same shape
+   is stored in the archive (data.full) so an archived workshop can be viewed
+   and printed exactly like a live one. Participant names and device ids are
+   deliberately not included. */
+async function fetchLiveReportSource(){
   const [{data:allResponses}, {data:allAnalysis}] = await Promise.all([
     sb.from('responses').select('*'),
     sb.from('analysis').select('*'),
   ]);
-  const responses = allResponses||[]; const analysisRows = allAnalysis||[];
-  const findAnalysis = (key)=> analysisRows.find(a=>a.key===key) || null;
   let votes = [];
   if(currentSession.vote_module_id){
     const { data } = await sb.from('votes').select('*').eq('module_id', currentSession.vote_module_id);
     votes = data||[];
   }
+  return {
+    version: 1,
+    responses: (allResponses||[]).map(r=>({ module_id:r.module_id, dept:r.dept, values:r.values, created_at:r.created_at })),
+    analysis: (allAnalysis||[]).map(a=>({ key:a.key, themes:a.themes, comment:a.comment||null })),
+    votes: votes.map(v=>({ module_id:v.module_id, picks:v.picks })),
+    voteOptions: currentSession.vote_options||[],
+    charter: currentSession.charter||[],
+  };
+}
 
-  const now = new Date().toLocaleString(lang==='pl'?'pl-PL':'en-US');
-  let html = `<h1>${escapeHtml(t('title',lang))}</h1><div class="report-meta">${escapeHtml(t('subtitle',lang))} — ${escapeHtml(now)}</div>`;
+async function buildFullReportHtml(){
+  return buildReportHtmlFromSource(await fetchLiveReportSource());
+}
+
+function buildReportHtmlFromSource(src, opts){
+  opts = opts||{};
+  const responses = src.responses||[]; const analysisRows = src.analysis||[];
+  const votes = src.votes||[]; const voteOptions = src.voteOptions||[]; const charter = src.charter||[];
+  const findAnalysis = (key)=> analysisRows.find(a=>a.key===key) || null;
+
+  const now = (opts.when? new Date(opts.when) : new Date()).toLocaleString(lang==='pl'?'pl-PL':'en-US');
+  let html = `<h1>${escapeHtml(opts.title || t('title',lang))}</h1><div class="report-meta">${escapeHtml(t('subtitle',lang))} — ${escapeHtml(now)}</div>`;
 
   MODULES.forEach(m=>{
     if(m.type==='lobby' || m.type==='info' || m.type==='summary') return;
@@ -1011,16 +1059,16 @@ async function buildFullReportHtml(){
       else html += `<ul class="report-list">` + items.map(it=>`<li>${it.dept? `<span class="report-dept">${escapeHtml(t('dept_'+it.dept,lang))}:</span> `:''}${escapeHtml(it.text)}</li>`).join('') + `</ul>`;
       html += renderThemesHtml(findAnalysis(m.id+'__'+f.id));
     });
-    if(m.id==='ceo_discussion' && (currentSession.vote_options||[]).length){
+    if(m.id==='ceo_discussion' && voteOptions.length){
       html += `<h3>${escapeHtml(t('vote_results',lang))}</h3>`;
-      const counts={}; currentSession.vote_options.forEach(o=>counts[o.id]=0);
+      const counts={}; voteOptions.forEach(o=>counts[o.id]=0);
       votes.forEach(v=>(v.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
-      const sorted = currentSession.vote_options.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0));
+      const sorted = voteOptions.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0));
       html += `<ul class="report-list">` + sorted.map((o,i)=>`<li>#${i+1} ${escapeHtml(o.label||'')} — ${counts[o.id]||0}</li>`).join('') + `</ul>`;
     }
-    if(m.id==='charter' && (currentSession.charter||[]).length){
+    if(m.id==='charter' && charter.length){
       html += `<h3>${escapeHtml(t('summary_charter',lang))}</h3>`;
-      html += `<ul class="report-list">` + currentSession.charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') + `</ul>`;
+      html += `<ul class="report-list">` + charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') + `</ul>`;
     }
   });
 
@@ -1038,14 +1086,14 @@ async function buildFullReportHtml(){
   html += `<h3>${escapeHtml(t('summary_checklist',lang))}</h3><ul class="report-list">` + (checklist.length? checklist.map(x=>`<li>${escapeHtml(x)}</li>`).join('') : `<li class="report-empty">${escapeHtml(t('summary_empty',lang))}</li>`) + `</ul>`;
 
   html += `<h3>${escapeHtml(t('summary_ideas',lang))}</h3>`;
-  if((currentSession.vote_options||[]).length){
-    const counts={}; currentSession.vote_options.forEach(o=>counts[o.id]=0);
+  if(voteOptions.length){
+    const counts={}; voteOptions.forEach(o=>counts[o.id]=0);
     votes.forEach(v=>(v.picks||[]).forEach(p=>{ if(counts[p]!=null) counts[p]++; }));
-    const top3 = currentSession.vote_options.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)).slice(0,3);
+    const top3 = voteOptions.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)).slice(0,3);
     html += `<ul class="report-list">` + top3.map((o,i)=>`<li>#${i+1} ${escapeHtml(o.label||'')} (${counts[o.id]||0})</li>`).join('') + `</ul>`;
   } else html += `<div class="report-empty">${escapeHtml(t('summary_empty',lang))}</div>`;
 
-  html += `<h3>${escapeHtml(t('summary_charter',lang))}</h3><ul class="report-list">` + ((currentSession.charter||[]).length? currentSession.charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') : `<li class="report-empty">${escapeHtml(t('summary_empty',lang))}</li>`) + `</ul>`;
+  html += `<h3>${escapeHtml(t('summary_charter',lang))}</h3><ul class="report-list">` + (charter.length? charter.map(c=>`<li>${escapeHtml(c)}</li>`).join('') : `<li class="report-empty">${escapeHtml(t('summary_empty',lang))}</li>`) + `</ul>`;
 
   html += `<h3>${escapeHtml(t('summary_commit',lang))}</h3>`;
   const n = Math.max(starts.length, needs.length);
@@ -1096,7 +1144,8 @@ async function doArchiveAndReset(){
     const needs = (translated && translated.needs && translated.needs.length===rawNeeds.length) ? translated.needs : rawNeeds;
     const commitments = rawStarts.map((_,i)=>({start:starts[i], need:needs[i]})).filter(c=>c.start||c.need);
 
-    const data = { checklist, topIdeas, charter: currentSession.charter||[], commitments };
+    const full = await fetchLiveReportSource();
+    const data = { checklist, topIdeas, charter: currentSession.charter||[], commitments, full };
     const saved = await archiveRequest('save', { name, data });
     if(!saved) return;
 
